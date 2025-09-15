@@ -137,24 +137,28 @@ async def stopbot(ctx):
 async def on_ready():
     print(f"{bot.user} でログインしました！")
 
-    # 全サーバーの確認
-    for guild in bot.guilds:
-        print(f"--- サーバー: {guild.name} ({guild.id}) ---")
-        for channel in guild.text_channels:
-            print(f"テキストチャンネル: {channel.name} ({channel.id})")
-        for channel in guild.voice_channels:
-            print(f"ボイスチャンネル: {channel.name} ({channel.id})")
+    # サーバー取得
+    guild_a = bot.get_guild(SERVER_A_ID)
+    guild_b = bot.get_guild(SERVER_B_ID)
+    print("Server A:", guild_a)
+    print("Server B:", guild_b)
 
-    # config.py のチャンネルIDが正しく取れるかチェック
-    print(f"VC_LOG_CHANNEL: {VC_LOG_CHANNEL} -> {bot.get_channel(VC_LOG_CHANNEL)}")
-    print(f"AUDIT_LOG_CHANNEL: {AUDIT_LOG_CHANNEL} -> {bot.get_channel(AUDIT_LOG_CHANNEL)}")
+    # VCログ・監査ログチャンネル取得
+    vc_log_channel = bot.get_channel(VC_LOG_CHANNEL)
+    audit_log_channel = bot.get_channel(AUDIT_LOG_CHANNEL)
+    print("VC_LOG_CHANNEL:", VC_LOG_CHANNEL, "->", vc_log_channel)
+    print("AUDIT_LOG_CHANNEL:", AUDIT_LOG_CHANNEL, "->", audit_log_channel)
 
-    # マッピングの確認
-    print("CHANNEL_MAPPING:")
+    # メッセージマッピングチャンネル確認
     for src_id, dest_id in CHANNEL_MAPPING.items():
-        src = bot.get_channel(src_id) if isinstance(src_id, int) else src_id
-        dest = bot.get_channel(dest_id)
-        print(f"{src} -> {dest}")
+        if src_id == "a_other":
+            dest_channel = bot.get_channel(dest_id)
+            print("a_other ->", dest_id, "->", dest_channel)
+        else:
+            src_channel = bot.get_channel(src_id)
+            dest_channel = bot.get_channel(dest_id)
+            print(src_id, "->", dest_id, ":", src_channel, "->", dest_channel)
+
 
 
 # ---------- Bot起動 ----------
