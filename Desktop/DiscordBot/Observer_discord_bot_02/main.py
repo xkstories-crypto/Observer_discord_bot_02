@@ -110,3 +110,5 @@ async def delete_role(ctx, name: str):
         await ctx.send("ロールが見つかりません。")
 
 bot.run(TOKEN)
+print("DISCORD_TOKEN:", TOKEN)
+
