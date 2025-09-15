@@ -2,7 +2,12 @@
 import os
 
 # Render の環境変数から直接取得
-TOKEN = os.environ.get("TOKEN")
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN is None:
+    raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
+print("TOKEN length:", len(TOKEN))
+
 
 SERVER_A_ID = 123456789012345678  # AサーバーID
 SERVER_B_ID = 987654321098765432  # BサーバーID
