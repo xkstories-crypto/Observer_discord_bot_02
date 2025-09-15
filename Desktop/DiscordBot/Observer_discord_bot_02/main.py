@@ -1,7 +1,12 @@
-# HTTPサーバー
-import os, threading
+# main.py
+import os
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import discord
+from discord.ext import commands
+from config import TOKEN, SERVER_A_ID, SERVER_B_ID, CHANNEL_MAPPING, VC_LOG_CHANNEL, AUDIT_LOG_CHANNEL
 
+# ---------- HTTPサーバー（Render用にポート開放） ----------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -14,11 +19,7 @@ def run_server():
 
 threading.Thread(target=run_server, daemon=True).start()
 
-# Discord Bot
-import discord
-from discord.ext import commands
-from config import TOKEN, SERVER_A_ID, SERVER_B_ID, CHANNEL_MAPPING, VC_LOG_CHANNEL, AUDIT_LOG_CHANNEL
-
+# ---------- Discord Bot ----------
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
@@ -28,10 +29,102 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ---------- 起動時 ----------
 @bot.event
 async def on_ready():
     print(f"{bot.user} でログインしました！")
 
-# ここに on_message, VCログ, 監査ログ, コマンド を整理して1回ずつ書く
+# ---------- メッセージ転送 ----------
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    if message.guild.id != SERVER_A_ID:
+        await bot.process_commands(message)
+        return
 
+    guild_b = bot.get_guild(SERVER_B_ID)
+    dest_channel_id = CHANNEL_MAPPING.get(message.channel.id, CHANNEL_MAPPING.get("a_other"))
+    dest_channel = guild_b.get_channel(dest_channel_id) if guild_b else None
+
+    if dest_channel:
+        embed = discord.Embed(
+            description=message.content,
+            color=discord.Color.blue()
+        )
+        embed.set_author(name=message.author.display_name, icon_url=message.author.avatar.url if message.author.avatar else None)
+        await dest_channel.send(embed=embed)
+
+    await bot.process_commands(message)
+
+# ---------- VC入退出ログ ----------
+@bot.event
+async def on_voice_state_update(member, before, after):
+    log_channel = member.guild.get_channel(VC_LOG_CHANNEL)
+    if not log_channel:
+        return
+
+    if before.channel is None and after.channel is not None:
+        await log_channel.send(f"🔊 {member.display_name} が {after.channel.name} に参加しました。")
+    elif before.channel is not None and after.channel is None:
+        await log_channel.send(f"🔈 {member.display_name} が {before.channel.name} から退出しました。")
+
+# ---------- VCにいる人を全チャンネルで確認 ----------
+@bot.command()
+async def all_vc(ctx):
+    """サーバー内全VCの状況を確認"""
+    vc_channels = ctx.guild.voice_channels
+    result = []
+    for ch in vc_channels:
+        members = [m.display_name for m in ch.members]
+        if members:
+            result.append(f"{ch.name}: {', '.join(members)}")
+        else:
+            result.append(f"{ch.name}: (誰もいません)")
+    await ctx.send("\n".join(result))
+
+# ---------- 監査ログ ----------
+@bot.event
+async def on_member_join(member):
+    log_channel = member.guild.get_channel(AUDIT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(f"✅ {member.display_name} がサーバーに参加しました。")
+
+@bot.event
+async def on_member_remove(member):
+    log_channel = member.guild.get_channel(AUDIT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(f"❌ {member.display_name} がサーバーから退出しました。")
+
+@bot.event
+async def on_member_ban(guild, user):
+    log_channel = guild.get_channel(AUDIT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(f"⛔ {user.name} がBANされました。")
+
+@bot.event
+async def on_member_unban(guild, user):
+    log_channel = guild.get_channel(AUDIT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(f"✅ {user.name} のBANが解除されました。")
+
+# ---------- ロール操作 ----------
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def create_role(ctx, name: str, color: str = "0x3498db"):
+    color_val = int(color, 16)
+    await ctx.guild.create_role(name=name, color=discord.Color(color_val))
+    await ctx.send(f"ロール {name} を作成しました。")
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def delete_role(ctx, name: str):
+    role = discord.utils.get(ctx.guild.roles, name=name)
+    if role:
+        await role.delete()
+        await ctx.send(f"ロール {name} を削除しました。")
+    else:
+        await ctx.send("ロールが見つかりません。")
+
+# ---------- Bot起動 ----------
 bot.run(TOKEN)
