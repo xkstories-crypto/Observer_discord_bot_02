@@ -133,6 +133,29 @@ async def stopbot(ctx):
     await ctx.send("Bot を停止します…")
     await bot.close()  # Bot を終了
 
+@bot.event
+async def on_ready():
+    print(f"{bot.user} でログインしました！")
+
+    # 全サーバーの確認
+    for guild in bot.guilds:
+        print(f"--- サーバー: {guild.name} ({guild.id}) ---")
+        for channel in guild.text_channels:
+            print(f"テキストチャンネル: {channel.name} ({channel.id})")
+        for channel in guild.voice_channels:
+            print(f"ボイスチャンネル: {channel.name} ({channel.id})")
+
+    # config.py のチャンネルIDが正しく取れるかチェック
+    print(f"VC_LOG_CHANNEL: {VC_LOG_CHANNEL} -> {bot.get_channel(VC_LOG_CHANNEL)}")
+    print(f"AUDIT_LOG_CHANNEL: {AUDIT_LOG_CHANNEL} -> {bot.get_channel(AUDIT_LOG_CHANNEL)}")
+
+    # マッピングの確認
+    print("CHANNEL_MAPPING:")
+    for src_id, dest_id in CHANNEL_MAPPING.items():
+        src = bot.get_channel(src_id) if isinstance(src_id, int) else src_id
+        dest = bot.get_channel(dest_id)
+        print(f"{src} -> {dest}")
+
 
 # ---------- Bot起動 ----------
 bot.run(TOKEN)
