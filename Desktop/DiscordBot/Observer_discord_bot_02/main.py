@@ -126,5 +126,13 @@ async def delete_role(ctx, name: str):
     else:
         await ctx.send("ロールが見つかりません。")
 
+# ロール操作などのコマンドの下あたり
+@bot.command()
+@commands.is_owner()  # Bot オーナーのみ実行可能
+async def stopbot(ctx):
+    await ctx.send("Bot を停止します…")
+    await bot.close()  # Bot を終了
+
+
 # ---------- Bot起動 ----------
 bot.run(TOKEN)
