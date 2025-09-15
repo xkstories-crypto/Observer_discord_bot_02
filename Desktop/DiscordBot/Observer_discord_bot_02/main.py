@@ -34,6 +34,28 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"{bot.user} でログインしました！")
 
+    # サーバー取得
+    guild_a = bot.get_guild(SERVER_A_ID)
+    guild_b = bot.get_guild(SERVER_B_ID)
+    print("Server A:", guild_a)
+    print("Server B:", guild_b)
+
+    # VCログ・監査ログチャンネル取得
+    vc_log_channel = bot.get_channel(VC_LOG_CHANNEL)
+    audit_log_channel = bot.get_channel(AUDIT_LOG_CHANNEL)
+    print("VC_LOG_CHANNEL:", VC_LOG_CHANNEL, "->", vc_log_channel)
+    print("AUDIT_LOG_CHANNEL:", AUDIT_LOG_CHANNEL, "->", audit_log_channel)
+
+    # メッセージマッピングチャンネル確認
+    for src_id, dest_id in CHANNEL_MAPPING.items():
+        if src_id == "a_other":
+            dest_channel = bot.get_channel(dest_id)
+            print("a_other ->", dest_id, "->", dest_channel)
+        else:
+            src_channel = bot.get_channel(src_id)
+            dest_channel = bot.get_channel(dest_id)
+            print(src_id, "->", dest_id, ":", src_channel, "->", dest_channel)
+
 # ---------- メッセージ転送 ----------
 @bot.event
 async def on_message(message):
@@ -126,40 +148,42 @@ async def delete_role(ctx, name: str):
     else:
         await ctx.send("ロールが見つかりません。")
 
-# ロール操作などのコマンドの下あたり
+# ---------- Bot停止コマンド ----------
 @bot.command()
-@commands.is_owner()  # Bot オーナーのみ実行可能
+@commands.is_owner()
 async def stopbot(ctx):
     await ctx.send("Bot を停止します…")
-    await bot.close()  # Bot を終了
+    await bot.close()
 
-@bot.event
-async def on_ready():
-    print(f"{bot.user} でログインしました！")
+# ---------- サーバー・チャンネル確認コマンド ----------
+@bot.command()
+async def check_channels(ctx):
+    """サーバーとチャンネルがBotから見えているか確認"""
+    lines = []
 
-    # サーバー取得
+    # サーバー確認
     guild_a = bot.get_guild(SERVER_A_ID)
     guild_b = bot.get_guild(SERVER_B_ID)
-    print("Server A:", guild_a)
-    print("Server B:", guild_b)
+    lines.append(f"Server A ({SERVER_A_ID}): {guild_a}")
+    lines.append(f"Server B ({SERVER_B_ID}): {guild_b}")
 
-    # VCログ・監査ログチャンネル取得
+    # VCログ・監査ログチャンネル確認
     vc_log_channel = bot.get_channel(VC_LOG_CHANNEL)
     audit_log_channel = bot.get_channel(AUDIT_LOG_CHANNEL)
-    print("VC_LOG_CHANNEL:", VC_LOG_CHANNEL, "->", vc_log_channel)
-    print("AUDIT_LOG_CHANNEL:", AUDIT_LOG_CHANNEL, "->", audit_log_channel)
+    lines.append(f"VC_LOG_CHANNEL ({VC_LOG_CHANNEL}): {vc_log_channel}")
+    lines.append(f"AUDIT_LOG_CHANNEL ({AUDIT_LOG_CHANNEL}): {audit_log_channel}")
 
     # メッセージマッピングチャンネル確認
     for src_id, dest_id in CHANNEL_MAPPING.items():
         if src_id == "a_other":
             dest_channel = bot.get_channel(dest_id)
-            print("a_other ->", dest_id, "->", dest_channel)
+            lines.append(f"a_other -> {dest_id} -> {dest_channel}")
         else:
             src_channel = bot.get_channel(src_id)
             dest_channel = bot.get_channel(dest_id)
-            print(src_id, "->", dest_id, ":", src_channel, "->", dest_channel)
+            lines.append(f"{src_id} -> {dest_id}: {src_channel} -> {dest_channel}")
 
-
+    await ctx.send("```\n" + "\n".join(lines) + "\n```")
 
 # ---------- Bot起動 ----------
 bot.run(TOKEN)
