@@ -1,5 +1,7 @@
-import os, threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+# cogs/http_cog.py
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from discord.ext import commands
 
 class Handler(BaseHTTPRequestHandler):
@@ -8,14 +10,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running!")
 
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
-
-class HttpCog(commands.Cog):
+class HTTPCog(commands.Cog):
+    """Render 用のヘルスチェック HTTP サーバー"""
     def __init__(self, bot):
         self.bot = bot
-        threading.Thread(target=run_server, daemon=True).start()
+        self.start_server()
+
+    def start_server(self):
+        port = int(os.environ.get("PORT", 10000))
+        threading.Thread(target=self.run_server, args=(port,), daemon=True).start()
+
+    def run_server(self, port):
+        server = HTTPServer(("0.0.0.0", port), Handler)
+        server.serve_forever()
 
 async def setup(bot):
-    await bot.add_cog(HttpCog(bot))
+    await bot.add_cog(HTTPCog(bot))

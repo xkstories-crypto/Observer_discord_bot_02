@@ -1,8 +1,15 @@
+# main.py
 import discord
 from discord.ext import commands
-import os
+import threading
 from config import TOKEN
+from cogs.http_cog import run_server  # Cog 内に run_server を定義しておく
 
+# ---------- HTTPサーバー（Render用） ----------
+# main.py 内でスレッドとして起動
+threading.Thread(target=run_server, daemon=True).start()
+
+# ---------- Discord Bot ----------
 intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
@@ -12,9 +19,8 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ロードするCog一覧
+# ---------- Cog のロード ----------
 initial_cogs = [
-    "cogs.http_cog",
     "cogs.transfer_cog",
     "cogs.vc_cog",
     "cogs.audit_cog",
@@ -32,4 +38,5 @@ for cog in initial_cogs:
     except Exception as e:
         print(f"Failed to load {cog}: {e}")
 
+# ---------- Bot 起動 ----------
 bot.run(TOKEN)
