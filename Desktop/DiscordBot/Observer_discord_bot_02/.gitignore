@@ -1,0 +1,23 @@
+# OS 系
+.DS_Store
+Thumbs.db
+
+# Windows 系
+AppData/
+*.lnk
+*.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node
+node_modules/
+
+# VSCode
+.vscode/
+
+# その他不要
+*.log
