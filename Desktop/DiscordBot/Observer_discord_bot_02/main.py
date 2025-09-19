@@ -1,12 +1,22 @@
 # main.py
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord.ext import commands
-import threading
 from config import TOKEN
-from cogs.http_cog import run_server  # Cog 内に run_server を定義しておく
 
 # ---------- HTTPサーバー（Render用） ----------
-# main.py 内でスレッドとして起動
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+
 threading.Thread(target=run_server, daemon=True).start()
 
 # ---------- Discord Bot ----------
@@ -19,7 +29,7 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------- Cog のロード ----------
+# Cog のロード
 initial_cogs = [
     "cogs.transfer_cog",
     "cogs.vc_cog",
@@ -38,5 +48,4 @@ for cog in initial_cogs:
     except Exception as e:
         print(f"Failed to load {cog}: {e}")
 
-# ---------- Bot 起動 ----------
 bot.run(TOKEN)
