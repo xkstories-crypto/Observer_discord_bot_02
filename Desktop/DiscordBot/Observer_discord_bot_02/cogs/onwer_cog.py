@@ -7,22 +7,27 @@ class OwnerCog(commands.Cog):
         self.bot = bot
 
     # 管理者チェック用デコレーター
-    def admin_only():
+    def admin_only(self):
         async def predicate(ctx):
             return ctx.author.id in ADMIN_IDS
         return commands.check(predicate)
 
     # ---------- Bot停止 ----------
     @commands.command()
-    @admin_only()
     async def stopbot(self, ctx):
+        # adminチェック
+        if ctx.author.id not in ADMIN_IDS:
+            await ctx.send("あなたは管理者ではありません。")
+            return
         await ctx.send("Bot を停止します…")
         await self.bot.close()
 
     # ---------- チャンネル再取得 ----------
     @commands.command()
-    @admin_only()
     async def reload(self, ctx):
+        if ctx.author.id not in ADMIN_IDS:
+            await ctx.send("あなたは管理者ではありません。")
+            return
         lines = []
 
         vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
@@ -34,14 +39,14 @@ class OwnerCog(commands.Cog):
             dest_channel = self.bot.get_channel(dest_id)
             lines.append(f"{src_id} -> {dest_channel}")
 
-        await ctx.send(
-            "チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```"
-        )
+        await ctx.send("チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```")
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
-    @admin_only()
     async def check(self, ctx):
+        if ctx.author.id not in ADMIN_IDS:
+            await ctx.send("あなたは管理者ではありません。")
+            return
         lines = []
         guild_a = self.bot.get_guild(SERVER_A_ID)
         guild_b = self.bot.get_guild(SERVER_B_ID)
