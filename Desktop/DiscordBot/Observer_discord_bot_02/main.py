@@ -32,11 +32,13 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- Cog のリスト ----------
 initial_cogs = [
+    "cogs.owner_cog",   # ← これを追加
     "cogs.transfer_cog",
     "cogs.vc_cog",
     "cogs.audit_cog",
     "cogs.role_cog"
 ]
+
 
 # ---------- Cog を非同期でロード ----------
 async def load_all_cogs():
