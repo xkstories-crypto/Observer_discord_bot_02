@@ -6,12 +6,6 @@ class OwnerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 管理者チェック用デコレーター
-    def admin_only(self):
-        async def predicate(ctx):
-            return ctx.author.id in ADMIN_IDS
-        return commands.check(predicate)
-
     # ---------- Bot停止 ----------
     @commands.command()
     async def stopbot(self, ctx):
@@ -27,6 +21,7 @@ class OwnerCog(commands.Cog):
         if ctx.author.id not in ADMIN_IDS:
             await ctx.send("あなたは管理者ではありません。")
             return
+
         lines = []
 
         vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
@@ -40,30 +35,40 @@ class OwnerCog(commands.Cog):
 
         await ctx.send("チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```")
 
-# ---------- サーバー・チャンネル確認（誰でもOK） ----------
-@commands.command()
-async def check(self, ctx):
-    lines = []
+        # 自動で check の内容も表示
+        await self.check(ctx)
 
-    # サーバー情報
-    guild_a = self.bot.get_guild(SERVER_A_ID)
-    guild_b = self.bot.get_guild(SERVER_B_ID)
-    lines.append(f"Server A ({SERVER_A_ID}): {guild_a}")
-    lines.append(f"Server B ({SERVER_B_ID}): {guild_b}")
+    # ---------- サーバー・チャンネル確認 ----------
+    @commands.command()
+    async def check(self, ctx):
+        lines = []
 
-    # ログチャンネル情報
-    vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
-    audit_log_channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
-    lines.append(f"VC_LOG_CHANNEL ({VC_LOG_CHANNEL}): {vc_log_channel}")
-    lines.append(f"AUDIT_LOG_CHANNEL ({AUDIT_LOG_CHANNEL}): {audit_log_channel}")
+        # 管理者ならADMIN_IDSとVC/AUDITチャンネルも表示
+        if ctx.author.id in ADMIN_IDS:
+            lines.append("ADMIN_IDS:")
+            for admin_id in ADMIN_IDS:
+                member = ctx.guild.get_member(admin_id)
+                if member:
+                    lines.append(f"{admin_id} -> {member}")
+                else:
+                    lines.append(f"{admin_id} -> ユーザー不在")
 
-    # マッピングチャンネル情報
-    for src_key, dest_id in CHANNEL_MAPPING.items():
-        dest_channel = self.bot.get_channel(dest_id)
-        lines.append(f"{src_key} -> {dest_channel}")  # キーが文字列でも整数でもOK
+            vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
+            audit_log_channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
+            lines.append(f"VC_LOG_CHANNEL ({VC_LOG_CHANNEL}): {vc_log_channel}")
+            lines.append(f"AUDIT_LOG_CHANNEL ({AUDIT_LOG_CHANNEL}): {audit_log_channel}")
 
-    await ctx.send("```\n" + "\n".join(lines) + "\n```")
+        # コマンド実行サーバーの情報は全員に表示
+        guild = ctx.guild
+        lines.append(f"Server ({guild.id}): {guild.name}")
 
+        # このサーバーに関連するチャンネルのみ表示
+        for src_key, dest_id in CHANNEL_MAPPING.items():
+            dest_channel = self.bot.get_channel(dest_id)
+            if dest_channel and dest_channel.guild.id == guild.id:
+                lines.append(f"{src_key} -> {dest_channel.name}")
+
+        await ctx.send("```\n" + "\n".join(lines) + "\n```")
 
 
 async def setup(bot):
