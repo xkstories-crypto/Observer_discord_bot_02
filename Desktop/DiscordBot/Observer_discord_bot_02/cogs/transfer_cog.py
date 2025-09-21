@@ -20,7 +20,12 @@ class TransferCog(commands.Cog):
         dest_channel = guild_b.get_channel(dest_channel_id) if guild_b else None
 
         if dest_channel:
-            embed = discord.Embed(description=message.content, color=discord.Color.blue())
+            # a_otherの場合はチャンネル名を添えてEmbedを作る
+            description = message.content
+            if message.channel.id not in CHANNEL_MAPPING:
+                description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
+
+            embed = discord.Embed(description=description, color=discord.Color.blue())
             embed.set_author(
                 name=message.author.display_name,
                 icon_url=message.author.avatar.url if message.author.avatar else None
