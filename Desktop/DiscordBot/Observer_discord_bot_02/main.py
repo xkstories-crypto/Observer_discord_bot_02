@@ -50,6 +50,10 @@ async def main():
         async def on_ready():
             print(f"[🟢] Bot logged in as {bot.user}")
             print(f"[ℹ] Loaded Cogs: {list(bot.cogs.keys())}")
+            # コマンド一覧確認
+            print("[ℹ] Registered Commands:")
+            for cmd in bot.commands:
+                print(f" - {cmd.name}")
 
         await bot.start(TOKEN)
 
