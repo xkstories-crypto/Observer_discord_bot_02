@@ -1,10 +1,9 @@
-# main_sync.py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord.ext import commands
-from config import TOKEN, SERVER_A_ID, SERVER_B_ID, CHANNEL_MAPPING, VC_LOG_CHANNEL, AUDIT_LOG_CHANNEL
+from config import TOKEN
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -29,13 +28,12 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------- Cog の同期ロード ----------
+# ---------- Cog のロード ----------
 cogs = [
-    "cogs.owner_cog",
     "cogs.transfer_cog",
     "cogs.vc_cog",
     "cogs.audit_cog",
-    "cogs.role_cog"
+    "cogs.owner_cog",
 ]
 
 for cog in cogs:
@@ -45,24 +43,5 @@ for cog in cogs:
     except Exception as e:
         print(f"Failed to load {cog}: {e}")
 
-# ---------- 起動時 ----------
-@bot.event
-async def on_ready():
-    print(f"{bot.user} でログインしました！")
-
-    guild_a = bot.get_guild(SERVER_A_ID)
-    guild_b = bot.get_guild(SERVER_B_ID)
-    print("Server A:", guild_a)
-    print("Server B:", guild_b)
-
-    vc_log_channel = bot.get_channel(VC_LOG_CHANNEL)
-    audit_log_channel = bot.get_channel(AUDIT_LOG_CHANNEL)
-    print("VC_LOG_CHANNEL:", VC_LOG_CHANNEL, "->", vc_log_channel)
-    print("AUDIT_LOG_CHANNEL:", AUDIT_LOG_CHANNEL, "->", audit_log_channel)
-
-    for src_id, dest_id in CHANNEL_MAPPING.items():
-        dest_channel = bot.get_channel(dest_id)
-        print(f"{src_id} -> {dest_id}: {dest_channel}")
-
-# ---------- Bot 起動 ----------
+# ---------- Bot起動 ----------
 bot.run(TOKEN)
