@@ -3,6 +3,7 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord.ext import commands
+import traceback
 from config import TOKEN
 
 # ---------- HTTPサーバー（Render用） ----------
@@ -33,24 +34,25 @@ import asyncio
 
 async def main():
     async with bot:
-        for cog in [
+        cogs = [
             "cogs.transfer_cog",
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
-        ]:
+        ]
+        for cog in cogs:
             try:
                 await bot.load_extension(cog)
                 print(f"[✅] Loaded {cog}")
             except Exception as e:
                 print(f"[❌] Failed to load {cog}: {e}")
+                traceback.print_exc()  # ここで完全なエラーを表示
 
         # 起動時ログ
         @bot.event
         async def on_ready():
             print(f"[🟢] Bot logged in as {bot.user}")
             print(f"[ℹ] Loaded Cogs: {list(bot.cogs.keys())}")
-            # コマンド一覧確認
             print("[ℹ] Registered Commands:")
             for cmd in bot.commands:
                 print(f" - {cmd.name}")
