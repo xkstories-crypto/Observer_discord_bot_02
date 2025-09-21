@@ -40,25 +40,30 @@ class OwnerCog(commands.Cog):
 
         await ctx.send("チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```")
 
-    # ---------- サーバー・チャンネル確認（誰でもOK） ----------
-    @commands.command()
-    async def check(self, ctx):
-        lines = []
-        guild_a = self.bot.get_guild(SERVER_A_ID)
-        guild_b = self.bot.get_guild(SERVER_B_ID)
-        lines.append(f"Server A ({SERVER_A_ID}): {guild_a}")
-        lines.append(f"Server B ({SERVER_B_ID}): {guild_b}")
+# ---------- サーバー・チャンネル確認（誰でもOK） ----------
+@commands.command()
+async def check(self, ctx):
+    lines = []
 
-        vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
-        audit_log_channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
-        lines.append(f"VC_LOG_CHANNEL ({VC_LOG_CHANNEL}): {vc_log_channel}")
-        lines.append(f"AUDIT_LOG_CHANNEL ({AUDIT_LOG_CHANNEL}): {audit_log_channel}")
+    # サーバー情報
+    guild_a = self.bot.get_guild(SERVER_A_ID)
+    guild_b = self.bot.get_guild(SERVER_B_ID)
+    lines.append(f"Server A ({SERVER_A_ID}): {guild_a}")
+    lines.append(f"Server B ({SERVER_B_ID}): {guild_b}")
 
-        for src_id, dest_id in CHANNEL_MAPPING.items():
-            dest_channel = self.bot.get_channel(dest_id)
-            lines.append(f"{src_id} -> {dest_channel}")
+    # ログチャンネル情報
+    vc_log_channel = self.bot.get_channel(VC_LOG_CHANNEL)
+    audit_log_channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
+    lines.append(f"VC_LOG_CHANNEL ({VC_LOG_CHANNEL}): {vc_log_channel}")
+    lines.append(f"AUDIT_LOG_CHANNEL ({AUDIT_LOG_CHANNEL}): {audit_log_channel}")
 
-        await ctx.send("```\n" + "\n".join(lines) + "\n```")
+    # マッピングチャンネル情報
+    for src_key, dest_id in CHANNEL_MAPPING.items():
+        dest_channel = self.bot.get_channel(dest_id)
+        lines.append(f"{src_key} -> {dest_channel}")  # キーが文字列でも整数でもOK
+
+    await ctx.send("```\n" + "\n".join(lines) + "\n```")
+
 
 
 async def setup(bot):
