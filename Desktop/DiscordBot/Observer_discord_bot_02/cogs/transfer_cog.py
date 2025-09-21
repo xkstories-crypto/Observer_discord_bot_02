@@ -26,15 +26,19 @@ class TransferCog(commands.Cog):
                 icon_url=message.author.avatar.url if message.author.avatar else None
             )
 
+            # 画像だけEmbedに
             first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
-            first_video = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("video/")), None)
             if first_image:
                 embed.set_image(url=first_image)
-            if first_video:
-                embed.set_video(url=first_video)
 
             await dest_channel.send(embed=embed)
 
+            # 動画や残りの添付ファイルは普通に送信
+            for attach in message.attachments:
+                if attach.url != first_image:
+                    await dest_channel.send(attach.url)
+
+            # 役職メンション
             if message.role_mentions:
                 mentions = []
                 for role in message.role_mentions:
@@ -44,10 +48,7 @@ class TransferCog(commands.Cog):
                 if mentions:
                     await dest_channel.send(" ".join(mentions))
 
-            for attach in message.attachments:
-                if attach.url != first_image and attach.url != first_video:
-                    await dest_channel.send(attach.url)
-
+            # メッセージ内URLも個別送信
             urls = [word for word in message.content.split() if word.startswith("http")]
             for url in urls:
                 await dest_channel.send(url)
