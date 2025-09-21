@@ -24,8 +24,8 @@ class VcCog(commands.Cog):
     # ---------- AサーバーのVC一覧を確認するコマンド ----------
     @commands.command()
     async def all_vc(self, ctx):
-        if ctx.guild.id != SERVER_A_ID:
-            await ctx.send("このコマンドはAサーバー専用です。")
+        if ctx.guild.id != SERVER_B_ID:
+            await ctx.send("このコマンドは管理者専用です。")
             return
 
         vc_channels = ctx.guild.voice_channels
