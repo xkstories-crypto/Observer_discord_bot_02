@@ -41,13 +41,18 @@ async def main():
         ]:
             try:
                 await bot.load_extension(cog)
-                print(f"Loaded {cog}")
+                print(f"[✅] Loaded {cog}")
             except Exception as e:
-                print(f"Failed to load {cog}: {e}")
+                print(f"[❌] Failed to load {cog}: {e}")
+
+        # 起動時ログ
+        @bot.event
+        async def on_ready():
+            print(f"[🟢] Bot logged in as {bot.user}")
+            print(f"[ℹ] Loaded Cogs: {list(bot.cogs.keys())}")
+
         await bot.start(TOKEN)
 
-asyncio.run(main())
-
-
-# ---------- Bot起動 ----------
-bot.run(TOKEN)
+# ---------- 非同期で実行 ----------
+if __name__ == "__main__":
+    asyncio.run(main())
