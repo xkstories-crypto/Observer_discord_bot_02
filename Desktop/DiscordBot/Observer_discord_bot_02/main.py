@@ -29,19 +29,25 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- Cog のロード ----------
-cogs = [
-    "cogs.transfer_cog",
-    "cogs.vc_cog",
-    "cogs.audit_cog",
-    "cogs.owner_cog",
-]
+import asyncio
 
-for cog in cogs:
-    try:
-        bot.load_extension(cog)
-        print(f"Loaded {cog}")
-    except Exception as e:
-        print(f"Failed to load {cog}: {e}")
+async def main():
+    async with bot:
+        for cog in [
+            "cogs.transfer_cog",
+            "cogs.vc_cog",
+            "cogs.audit_cog",
+            "cogs.owner_cog",
+        ]:
+            try:
+                await bot.load_extension(cog)
+                print(f"Loaded {cog}")
+            except Exception as e:
+                print(f"Failed to load {cog}: {e}")
+        await bot.start(TOKEN)
+
+asyncio.run(main())
+
 
 # ---------- Bot起動 ----------
 bot.run(TOKEN)
