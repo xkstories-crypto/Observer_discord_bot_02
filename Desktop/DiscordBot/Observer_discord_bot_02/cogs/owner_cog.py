@@ -15,7 +15,6 @@ class OwnerCog(commands.Cog):
     # ---------- Bot停止 ----------
     @commands.command()
     async def stopbot(self, ctx):
-        # adminチェック
         if ctx.author.id not in ADMIN_IDS:
             await ctx.send("あなたは管理者ではありません。")
             return
@@ -41,12 +40,9 @@ class OwnerCog(commands.Cog):
 
         await ctx.send("チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```")
 
-    # ---------- サーバー・チャンネル確認 ----------
+    # ---------- サーバー・チャンネル確認（誰でもOK） ----------
     @commands.command()
     async def check(self, ctx):
-        if ctx.author.id not in ADMIN_IDS:
-            await ctx.send("あなたは管理者ではありません。")
-            return
         lines = []
         guild_a = self.bot.get_guild(SERVER_A_ID)
         guild_b = self.bot.get_guild(SERVER_B_ID)
