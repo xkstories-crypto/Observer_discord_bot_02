@@ -66,43 +66,38 @@ class AuditCog(commands.Cog):
         )
 
     # ---------- メッセージ削除 ----------
-@commands.Cog.listener()
-async def on_message_delete(self, message):
-    if not message.guild:
-        return
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        if not message.guild:
+            return
 
-    embed = discord.Embed(
-        title="🗑 メッセージ削除",
-        description=f"{message.author.display_name if message.author else '不明'} のメッセージが削除されました",
-        color=0xFF4500,
-        timestamp=discord.utils.utcnow()
-    )
+        embed = discord.Embed(
+            title="🗑 メッセージ削除",
+            description=f"{message.author.display_name if message.author else '不明'} のメッセージが削除されました",
+            color=0xFF4500,
+            timestamp=discord.utils.utcnow()
+        )
 
-    # メッセージ内容
-    embed.add_field(name="内容", value=message.content or "なし", inline=False)
+        # メッセージ内容
+        embed.add_field(name="内容", value=message.content or "なし", inline=False)
 
-    # 添付ファイル
-    images = [a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")]
-    videos = [a.url for a in message.attachments if a.content_type and a.content_type.startswith("video/")]
-    others = [a.url for a in message.attachments if not (a.content_type and (a.content_type.startswith("image/") or a.content_type.startswith("video/")))]
+        # 添付ファイル
+        images = [a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")]
+        videos = [a.url for a in message.attachments if a.content_type and a.content_type.startswith("video/")]
+        others = [a.url for a in message.attachments if not (a.content_type and (a.content_type.startswith("image/") or a.content_type.startswith("video/")))]
 
-    # 画像はEmbedに設定（最初の1枚だけ）
-    if images:
-        embed.set_image(url=images[0])
-    # 他の画像はフィールドでリスト化
-    if len(images) > 1:
-        embed.add_field(name="添付画像(残り)", value="\n".join(images[1:]), inline=False)
-    # 動画はフィールドで
-    if videos:
-        embed.add_field(name="添付動画", value="\n".join(videos), inline=False)
-    # その他ファイル
-    if others:
-        embed.add_field(name="その他添付", value="\n".join(others), inline=False)
+        if images:
+            embed.set_image(url=images[0])
+        if len(images) > 1:
+            embed.add_field(name="添付画像(残り)", value="\n".join(images[1:]), inline=False)
+        if videos:
+            embed.add_field(name="添付動画", value="\n".join(videos), inline=False)
+        if others:
+            embed.add_field(name="その他添付", value="\n".join(others), inline=False)
 
-    channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
-    if channel:
-        await channel.send(embed=embed)
-
+        channel = self.bot.get_channel(AUDIT_LOG_CHANNEL)
+        if channel:
+            await channel.send(embed=embed)
 
     # ---------- 招待リンク ----------
     @commands.Cog.listener()
