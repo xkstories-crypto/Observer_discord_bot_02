@@ -21,14 +21,16 @@ class VcCog(commands.Cog):
         elif before.channel is not None and after.channel is None:
             await vc_log_channel.send(f"🔈 {member.display_name} が {before.channel.name} から退出しました。")
 
-    # ---------- AサーバーのVC一覧を確認するコマンド ----------
+    # ---------- BサーバーからAサーバーのVC一覧を確認 ----------
     @commands.command()
     async def all_vc(self, ctx):
-        if ctx.guild.id != SERVER_B_ID:
-            await ctx.send("このコマンドは管理者専用です。")
+        # Aサーバーを直接取得
+        guild_a = self.bot.get_guild(SERVER_A_ID)
+        if not guild_a:
+            await ctx.send("Aサーバーが見つかりません。")
             return
 
-        vc_channels = ctx.guild.voice_channels
+        vc_channels = guild_a.voice_channels
         result = []
         for ch in vc_channels:
             members = [m.display_name for m in ch.members]
