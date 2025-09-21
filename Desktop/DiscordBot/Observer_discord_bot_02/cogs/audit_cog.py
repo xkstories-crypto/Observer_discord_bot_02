@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from config import SERVER_A_ID, AUDIT_LOG_CHANNEL
 
-
 class AuditCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -27,7 +26,7 @@ class AuditCog(commands.Cog):
                     embed.add_field(name=name, value=value, inline=inline)
             await channel.send(embed=embed)
 
-    # ---------- メンバー入退・BAN/KICK ----------
+    # ---------- メンバー関連 ----------
     @commands.Cog.listener()
     async def on_member_join(self, member):
         await self.send_audit_embed(
@@ -66,56 +65,17 @@ class AuditCog(commands.Cog):
             guild=guild,
         )
 
-    # ---------- ロール操作 ----------
+    # ---------- メッセージ削除 ----------
     @commands.Cog.listener()
-    async def on_guild_role_create(self, role):
-        await self.send_audit_embed(
-            "🎭 ロール作成",
-            f"新しいロール **{role.name}** が作成されました",
-            fields=[
-                ("ID", role.id, True),
-                ("色", str(role.color), True),
-                ("メンション可能", "はい" if role.mentionable else "いいえ", True),
-                ("分離表示", "はい" if role.hoist else "いいえ", True),
-            ],
-            color=role.color.value
-            if role.color != discord.Color.default()
-            else 0x99AAB5,
-            guild=role.guild,
-        )
-
-    @commands.Cog.listener()
-    async def on_guild_role_delete(self, role):
-        await self.send_audit_embed(
-            "🗑 ロール削除",
-            f"ロール **{role.name}** が削除されました",
-            fields=[("ID", role.id, True)],
-            color=0xFF6B6B,
-            guild=role.guild,
-        )
-
-    @commands.Cog.listener()
-    async def on_guild_role_update(self, before, after):
-        await self.send_audit_embed(
-            "✏ ロール更新",
-            f"ロール {before.name} → {after.name} に更新されました",
-            fields=[("ID", after.id, True)],
-            color=0xFFA500,
-            guild=after.guild,
-        )
-
-  # ---------- メッセージ削除 ----------
-@commands.Cog.listener()
-async def on_message_delete(self, message):
-    if message.guild:  # DMでは発火しないように
+    async def on_message_delete(self, message):
+        if not message.guild:
+            return
 
         fields = [("内容", message.content or "なし", False)]
 
-        # 添付ファイルをまとめる
+        # 添付ファイルまとめる
         if message.attachments:
-            attach_texts = []
-            for a in message.attachments:
-                attach_texts.append(a.url)
+            attach_texts = [a.url for a in message.attachments]
             fields.append(("添付ファイル", "\n".join(attach_texts), False))
 
         await self.send_audit_embed(
@@ -125,7 +85,6 @@ async def on_message_delete(self, message):
             color=0xFF4500,
             guild=message.guild,
         )
-
 
     # ---------- 招待リンク ----------
     @commands.Cog.listener()
@@ -163,13 +122,9 @@ async def on_message_delete(self, message):
         if before.icon != after.icon:
             changes.append("サーバーアイコンが変更されました")
         if before.verification_level != after.verification_level:
-            changes.append(
-                f"認証レベル: `{before.verification_level}` → `{after.verification_level}`"
-            )
+            changes.append(f"認証レベル: `{before.verification_level}` → `{after.verification_level}`")
         if before.explicit_content_filter != after.explicit_content_filter:
-            changes.append(
-                f"不適切コンテンツフィルター: `{before.explicit_content_filter}` → `{after.explicit_content_filter}`"
-            )
+            changes.append(f"不適切コンテンツフィルター: `{before.explicit_content_filter}` → `{after.explicit_content_filter}`")
 
         if changes:
             await self.send_audit_embed(
