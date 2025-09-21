@@ -104,17 +104,28 @@ class AuditCog(commands.Cog):
             guild=after.guild,
         )
 
-    # ---------- メッセージ削除 ----------
-    @commands.Cog.listener()
-    async def on_message_delete(self, message):
-        if message.guild:  # DMでは発火しないように
-            await self.send_audit_embed(
-                "🗑 メッセージ削除",
-                f"{message.author.display_name if message.author else '不明'} のメッセージが削除されました",
-                fields=[("内容", message.content or "なし", False)],
-                color=0xFF4500,
-                guild=message.guild,
-            )
+  # ---------- メッセージ削除 ----------
+@commands.Cog.listener()
+async def on_message_delete(self, message):
+    if message.guild:  # DMでは発火しないように
+
+        fields = [("内容", message.content or "なし", False)]
+
+        # 添付ファイルをまとめる
+        if message.attachments:
+            attach_texts = []
+            for a in message.attachments:
+                attach_texts.append(a.url)
+            fields.append(("添付ファイル", "\n".join(attach_texts), False))
+
+        await self.send_audit_embed(
+            "🗑 メッセージ削除",
+            f"{message.author.display_name if message.author else '不明'} のメッセージが削除されました",
+            fields=fields,
+            color=0xFF4500,
+            guild=message.guild,
+        )
+
 
     # ---------- 招待リンク ----------
     @commands.Cog.listener()
