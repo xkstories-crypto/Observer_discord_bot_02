@@ -128,38 +128,72 @@ class ConfigManager:
             self.manager.save_config()
             await interaction.response.send_message("削除しました。", ephemeral=True)
 
-    # ------------------------
-    # !edit_config コマンド登録
-    # ------------------------
-    def register_command(self):
-        @self.bot.command(name="edit_config")
-        async def edit_config(ctx: commands.Context):
-            guild_id = ctx.guild.id
-            server = self.get_server_config(guild_id)
+  # ------------------------
+# !edit_config コマンド登録（編集＋削除ボタン対応）
+# ------------------------
+def register_command(self):
+    @self.bot.command(name="edit_config")
+    async def edit_config(ctx: commands.Context):
+        guild_id = ctx.guild.id
+        server = self.get_server_config(guild_id)
 
-            # 初回管理者登録
-            if len(server["ADMIN_IDS"]) == 0:
-                server["ADMIN_IDS"].append(ctx.author.id)
-                self.save_config()
-                await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。")
-                return
+        # 初回管理者登録
+        if len(server["ADMIN_IDS"]) == 0:
+            server["ADMIN_IDS"].append(ctx.author.id)
+            self.save_config()
+            await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。")
+            return
 
-            # 管理者チェック
-            if not self.is_admin(guild_id, ctx.author.id):
-                await ctx.send("管理者のみ使用可能です。")
-                return
+        # 管理者チェック
+        if not self.is_admin(guild_id, ctx.author.id):
+            await ctx.send("管理者のみ使用可能です。")
+            return
 
-            # Embed + ボタン
-            embed = discord.Embed(title="現在の設定")
-            embed.add_field(name="CHANNEL_MAPPING", value=str(server["CHANNEL_MAPPING"]), inline=False)
-            embed.add_field(name="READ_GROUPS", value=str(server["READ_GROUPS"]), inline=False)
-            embed.add_field(name="CHANNEL_GROUPS", value=str(server["CHANNEL_GROUPS"]), inline=False)
-            embed.add_field(name="ADMIN_IDS", value=str(server["ADMIN_IDS"]), inline=False)
+        # Embed 作成
+        embed = discord.Embed(title="現在の設定")
+        embed.add_field(name="CHANNEL_MAPPING", value=str(server["CHANNEL_MAPPING"]), inline=False)
+        embed.add_field(name="READ_GROUPS", value=str(server["READ_GROUPS"]), inline=False)
+        embed.add_field(name="CHANNEL_GROUPS", value=str(server["CHANNEL_GROUPS"]), inline=False)
+        embed.add_field(name="ADMIN_IDS", value=str(server["ADMIN_IDS"]), inline=False)
 
-            view = ui.View()
-            view.add_item(ui.Button(label="チャンネル編集", style=discord.ButtonStyle.blurple, custom_id="channel_mapping"))
-            view.add_item(ui.Button(label="読み上げグループ編集", style=discord.ButtonStyle.blurple, custom_id="read_groups"))
-            view.add_item(ui.Button(label="チャンネルグループ編集", style=discord.ButtonStyle.blurple, custom_id="channel_groups"))
-            view.add_item(ui.Button(label="管理者編集", style=discord.ButtonStyle.blurple, custom_id="admin_ids"))
+        # ボタンの定義
+        class ConfigButton(ui.Button):
+            def __init__(self, manager, category, action):
+                label = f"{category} {action}"
+                style = discord.ButtonStyle.green if action == "編集" else discord.ButtonStyle.red
+                super().__init__(label=label, style=style)
+                self.manager = manager
+                self.category = category
+                self.action = action
 
-            await ctx.send(embed=embed, view=view)
+            async def callback(self, interaction: discord.Interaction):
+                if not self.manager.is_admin(interaction.guild.id, interaction.user.id):
+                    await interaction.response.send_message("管理者のみ操作可能です。", ephemeral=True)
+                    return
+
+                if self.action == "編集":
+                    await interaction.response.send_modal(
+                        ConfigManager.EditModal(self.manager, self.category, guild_id)
+                    )
+                elif self.action == "削除":
+                    server = self.manager.get_server_config(interaction.guild.id)
+                    # カテゴリごとに削除
+                    if self.category == "CHANNEL_MAPPING":
+                        server["CHANNEL_MAPPING"].clear()
+                    elif self.category == "READ_GROUPS":
+                        server["READ_GROUPS"].clear()
+                    elif self.category == "CHANNEL_GROUPS":
+                        server["CHANNEL_GROUPS"].clear()
+                    elif self.category == "ADMIN_IDS":
+                        server["ADMIN_IDS"].clear()
+                    self.manager.save_config()
+                    await interaction.response.send_message(f"{self.category} を削除しました。", ephemeral=True)
+
+        # View にボタンを追加
+        view = ui.View()
+        categories = ["CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS", "ADMIN_IDS"]
+        for cat in categories:
+            view.add_item(ConfigButton(self, cat, "編集"))
+            view.add_item(ConfigButton(self, cat, "削除"))
+
+        await ctx.send(embed=embed, view=view)
