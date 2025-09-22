@@ -7,11 +7,14 @@ import os
 
 CONFIG_FILE = "config_data.json"
 
+# サーバーB固定ID（初回管理者登録用）
+FIXED_B_SERVER_ID = 123456789012345678  # ←BサーバーのIDに置き換えてください
+
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.load_config()
-        self.register_command()  # クラス内メソッドとして呼び出す
+        self.register_command()
 
     # ------------------------
     # 設定ロード/保存
@@ -91,34 +94,31 @@ class ConfigManager:
             await interaction.response.send_message("更新しました。", ephemeral=True)
 
     # ------------------------
-    # !edit_config コマンド登録（編集＋削除ボタン対応）
+    # !edit_config コマンド登録
     # ------------------------
     def register_command(self):
         @self.bot.command(name="edit_config")
         async def edit_config(ctx: commands.Context):
-            guild_id = ctx.guild.id
+            # 初回管理者登録はBサーバー固定
+            guild_id = FIXED_B_SERVER_ID
             server = self.get_server_config(guild_id)
 
-            # 初回管理者登録
             if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(ctx.author.id)
                 self.save_config()
-                await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。")
+                await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。（サーバーB固定）")
                 return
 
-            # 管理者チェック
             if not self.is_admin(guild_id, ctx.author.id):
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            # Embed 作成
             embed = discord.Embed(title="現在の設定")
             embed.add_field(name="CHANNEL_MAPPING", value=str(server["CHANNEL_MAPPING"]), inline=False)
             embed.add_field(name="READ_GROUPS", value=str(server["READ_GROUPS"]), inline=False)
             embed.add_field(name="CHANNEL_GROUPS", value=str(server["CHANNEL_GROUPS"]), inline=False)
             embed.add_field(name="ADMIN_IDS", value=str(server["ADMIN_IDS"]), inline=False)
 
-            # ボタン定義
             class ConfigButton(ui.Button):
                 def __init__(self, manager, category, action):
                     label = f"{category} {action}"
@@ -150,7 +150,6 @@ class ConfigManager:
                         self.manager.save_config()
                         await interaction.response.send_message(f"{self.category} を削除しました。", ephemeral=True)
 
-            # View にボタンを追加
             view = ui.View()
             categories = ["CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS", "ADMIN_IDS"]
             for cat in categories:
