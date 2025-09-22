@@ -6,9 +6,8 @@ import json
 import os
 
 CONFIG_FILE = "config_data.json"
-
-# サーバーB固定ID（初回管理者登録用）
-FIXED_B_SERVER_ID = 123456789012345678  # ←BサーバーのIDに置き換えてください
+FIXED_B_SERVER_ID = None  # 初回コマンド使用時に自動設定
+FIXED_A_SERVER_ID = 1414470075217350678  # Aサーバー固定
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
@@ -16,9 +15,6 @@ class ConfigManager:
         self.load_config()
         self.register_command()
 
-    # ------------------------
-    # 設定ロード/保存
-    # ------------------------
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -30,9 +26,6 @@ class ConfigManager:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
 
-    # ------------------------
-    # サーバーごとの設定取得
-    # ------------------------
     def get_server_config(self, guild_id: int):
         sid = str(guild_id)
         if sid not in self.config["servers"]:
@@ -40,7 +33,8 @@ class ConfigManager:
                 "CHANNEL_MAPPING": {},
                 "READ_GROUPS": {},
                 "CHANNEL_GROUPS": {},
-                "ADMIN_IDS": []
+                "ADMIN_IDS": [],
+                "OTHER_CHANNEL": None
             }
         return self.config["servers"][sid]
 
@@ -48,9 +42,6 @@ class ConfigManager:
         server = self.get_server_config(guild_id)
         return user_id in server["ADMIN_IDS"]
 
-    # ------------------------
-    # モーダル
-    # ------------------------
     class EditModal(ui.Modal):
         def __init__(self, manager, category, guild_id, key=None):
             super().__init__(title=f"{category} 編集")
@@ -58,7 +49,6 @@ class ConfigManager:
             self.category = category
             self.guild_id = guild_id
             self.key = key
-
             self.input1 = ui.TextInput(
                 label="新しい値",
                 placeholder="チャンネルID, ユーザーID, またはカンマ区切り"
@@ -93,16 +83,18 @@ class ConfigManager:
             self.manager.save_config()
             await interaction.response.send_message("更新しました。", ephemeral=True)
 
-    # ------------------------
-    # !edit_config コマンド登録
-    # ------------------------
     def register_command(self):
         @self.bot.command(name="edit_config")
         async def edit_config(ctx: commands.Context):
-            # 初回管理者登録はBサーバー固定
+            global FIXED_B_SERVER_ID
+            # 初回コマンド使用時にBサーバーIDを自動設定
+            if FIXED_B_SERVER_ID is None:
+                FIXED_B_SERVER_ID = ctx.guild.id
+
             guild_id = FIXED_B_SERVER_ID
             server = self.get_server_config(guild_id)
 
+            # 初回管理者登録
             if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(ctx.author.id)
                 self.save_config()
@@ -118,6 +110,7 @@ class ConfigManager:
             embed.add_field(name="READ_GROUPS", value=str(server["READ_GROUPS"]), inline=False)
             embed.add_field(name="CHANNEL_GROUPS", value=str(server["CHANNEL_GROUPS"]), inline=False)
             embed.add_field(name="ADMIN_IDS", value=str(server["ADMIN_IDS"]), inline=False)
+            embed.add_field(name="OTHER_CHANNEL", value=str(server["OTHER_CHANNEL"]), inline=False)
 
             class ConfigButton(ui.Button):
                 def __init__(self, manager, category, action):
@@ -129,16 +122,16 @@ class ConfigManager:
                     self.action = action
 
                 async def callback(self, interaction: discord.Interaction):
-                    if not self.manager.is_admin(interaction.guild.id, interaction.user.id):
+                    if not self.manager.is_admin(FIXED_B_SERVER_ID, interaction.user.id):
                         await interaction.response.send_message("管理者のみ操作可能です。", ephemeral=True)
                         return
 
                     if self.action == "編集":
                         await interaction.response.send_modal(
-                            ConfigManager.EditModal(self.manager, self.category, interaction.guild.id)
+                            ConfigManager.EditModal(self.manager, self.category, FIXED_B_SERVER_ID)
                         )
                     elif self.action == "削除":
-                        server = self.manager.get_server_config(interaction.guild.id)
+                        server = self.manager.get_server_config(FIXED_B_SERVER_ID)
                         if self.category == "CHANNEL_MAPPING":
                             server["CHANNEL_MAPPING"].clear()
                         elif self.category == "READ_GROUPS":
@@ -147,11 +140,13 @@ class ConfigManager:
                             server["CHANNEL_GROUPS"].clear()
                         elif self.category == "ADMIN_IDS":
                             server["ADMIN_IDS"].clear()
+                        elif self.category == "OTHER_CHANNEL":
+                            server["OTHER_CHANNEL"] = None
                         self.manager.save_config()
                         await interaction.response.send_message(f"{self.category} を削除しました。", ephemeral=True)
 
             view = ui.View()
-            categories = ["CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS", "ADMIN_IDS"]
+            categories = ["CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS", "ADMIN_IDS", "OTHER_CHANNEL"]
             for cat in categories:
                 view.add_item(ConfigButton(self, cat, "編集"))
                 view.add_item(ConfigButton(self, cat, "削除"))
