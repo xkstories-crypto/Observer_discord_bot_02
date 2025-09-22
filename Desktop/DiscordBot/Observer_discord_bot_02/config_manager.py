@@ -92,38 +92,6 @@ class ConfigManager:
             await interaction.response.send_message("更新しました。", ephemeral=True)
 
     # ------------------------
-    # セレクトメニュー
-    # ------------------------
-    class SelectMenu(ui.Select):
-        def __init__(self, manager, category, guild_id):
-            self.manager = manager
-            self.category = category
-            self.guild_id = guild_id
-
-            server = manager.get_server_config(guild_id)
-            options = []
-
-            if category == "channel_mapping":
-                options = [discord.SelectOption(label=f"{src} → {dst}", value=str(src))
-                           for src, dst in server["CHANNEL_MAPPING"].items()]
-            elif category == "read_groups":
-                options = [discord.SelectOption(label=name, value=name) for name in server["READ_GROUPS"].keys()]
-            elif category == "channel_groups":
-                options = [discord.SelectOption(label=name, value=name) for name in server["CHANNEL_GROUPS"].keys()]
-            elif category == "admin_ids":
-                options = [discord.SelectOption(label=str(uid), value=str(uid)) for uid in server["ADMIN_IDS"]]
-
-            super().__init__(placeholder=f"{category} を選択", options=options, max_values=1)
-
-        async def callback(self, interaction: discord.Interaction):
-            key = self.values[0]
-            await interaction.response.send_message(
-                f"{self.category} {key} を選択しました。操作ボタンで選んでください。",
-                ephemeral=True,
-                view=ConfigManager.ActionView(self.manager, self.category, self.guild_id, key)
-            )
-
-    # ------------------------
     # ボタンビュー
     # ------------------------
     class ActionView(ui.View):
@@ -161,26 +129,24 @@ class ConfigManager:
             await interaction.response.send_message("削除しました。", ephemeral=True)
 
     # ------------------------
-    # /edit_config コマンド登録
+    # !edit_config コマンド登録
     # ------------------------
     def register_command(self):
-        @self.bot.tree.command(name="edit_config", description="Bot設定を管理")
-        async def edit_config(interaction: discord.Interaction):
-            server = self.get_server_config(interaction.guild.id)
+        @self.bot.command(name="edit_config")
+        async def edit_config(ctx: commands.Context):
+            guild_id = ctx.guild.id
+            server = self.get_server_config(guild_id)
 
             # 初回管理者登録
             if len(server["ADMIN_IDS"]) == 0:
-                server["ADMIN_IDS"].append(interaction.user.id)
+                server["ADMIN_IDS"].append(ctx.author.id)
                 self.save_config()
-                await interaction.response.send_message(
-                    f"初回設定: {interaction.user.display_name} を管理者として登録しました。",
-                    ephemeral=True
-                )
+                await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。")
                 return
 
             # 管理者チェック
-            if not self.is_admin(interaction.guild.id, interaction.user.id):
-                await interaction.response.send_message("管理者のみ使用可能です。", ephemeral=True)
+            if not self.is_admin(guild_id, ctx.author.id):
+                await ctx.send("管理者のみ使用可能です。")
                 return
 
             # Embed + ボタン
@@ -195,4 +161,5 @@ class ConfigManager:
             view.add_item(ui.Button(label="読み上げグループ編集", style=discord.ButtonStyle.blurple, custom_id="read_groups"))
             view.add_item(ui.Button(label="チャンネルグループ編集", style=discord.ButtonStyle.blurple, custom_id="channel_groups"))
             view.add_item(ui.Button(label="管理者編集", style=discord.ButtonStyle.blurple, custom_id="admin_ids"))
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+            await ctx.send(embed=embed, view=view)
