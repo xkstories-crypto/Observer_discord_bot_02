@@ -35,6 +35,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- ConfigManager ----------
 config_manager = ConfigManager(bot)
+bot.config_manager = config_manager  # ←ここを追加
 
 # ---------- Cog のロード ----------
 async def main():
