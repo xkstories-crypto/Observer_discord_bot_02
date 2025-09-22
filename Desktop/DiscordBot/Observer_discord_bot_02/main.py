@@ -1,10 +1,14 @@
+# main.py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import discord
 from discord.ext import commands
 import traceback
+import asyncio
+
 from config import TOKEN
+from config_manager import ConfigManager
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -29,26 +33,30 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------- Cog のロード ----------
-import asyncio
+# ---------- ConfigManager ----------
+config_manager = ConfigManager(bot)
 
+# ---------- Cog のロード ----------
 async def main():
     async with bot:
+        # ロードする Cog のリスト
         cogs = [
             "cogs.transfer_cog",
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
         ]
-        for cog in cogs:
-            try:
-                await bot.load_extension(cog)
-                print(f"[✅] Loaded {cog}")
-            except Exception as e:
-                print(f"[❌] Failed to load {cog}: {e}")
-                traceback.print_exc()  # ここで完全なエラーを表示
 
-        # 起動時ログ
+        for cog_path in cogs:
+            try:
+                # Cog のロード
+                await bot.load_extension(cog_path)
+                print(f"[✅] Loaded {cog_path}")
+            except Exception as e:
+                print(f"[❌] Failed to load {cog_path}: {e}")
+                traceback.print_exc()
+
+        # ---------- Bot 起動時イベント ----------
         @bot.event
         async def on_ready():
             print(f"[🟢] Bot logged in as {bot.user}")
@@ -57,6 +65,7 @@ async def main():
             for cmd in bot.commands:
                 print(f" - {cmd.name}")
 
+        # Bot を起動
         await bot.start(TOKEN)
 
 # ---------- 非同期で実行 ----------
