@@ -1,12 +1,14 @@
+# config_manager.py
 import discord
-from discord import ui, app_commands
+from discord import ui
+from discord.ext import commands
 import json
 import os
 
 CONFIG_FILE = "config_data.json"
 
 class ConfigManager:
-    def __init__(self, bot: discord.Bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.load_config()
         self.register_command()
@@ -16,14 +18,14 @@ class ConfigManager:
     # ------------------------
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE) as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 self.config = json.load(f)
         else:
             self.config = {"servers": {}}
 
     def save_config(self):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(self.config, f, indent=2)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
 
     # ------------------------
     # サーバーごとの設定取得
@@ -54,7 +56,10 @@ class ConfigManager:
             self.guild_id = guild_id
             self.key = key
 
-            self.input1 = ui.TextInput(label="新しい値", placeholder="チャンネルID, ユーザーID, またはカンマ区切り")
+            self.input1 = ui.TextInput(
+                label="新しい値",
+                placeholder="チャンネルID, ユーザーID, またはカンマ区切り"
+            )
             self.add_item(self.input1)
 
         async def on_submit(self, interaction: discord.Interaction):
@@ -128,8 +133,6 @@ class ConfigManager:
             self.category = category
             self.guild_id = guild_id
             self.key = key
-            self.add_item(ui.Button(label="編集", style=discord.ButtonStyle.green, custom_id="edit"))
-            self.add_item(ui.Button(label="削除", style=discord.ButtonStyle.red, custom_id="delete"))
 
         async def interaction_check(self, interaction: discord.Interaction) -> bool:
             if not self.manager.is_admin(interaction.guild.id, interaction.user.id):
@@ -137,13 +140,13 @@ class ConfigManager:
                 return False
             return True
 
-        @ui.button(label="編集", style=discord.ButtonStyle.green, custom_id="edit")
+        @ui.button(label="編集", style=discord.ButtonStyle.green)
         async def edit_button(self, interaction: discord.Interaction, button: ui.Button):
             await interaction.response.send_modal(
                 ConfigManager.EditModal(self.manager, self.category, interaction.guild.id, self.key)
             )
 
-        @ui.button(label="削除", style=discord.ButtonStyle.red, custom_id="delete")
+        @ui.button(label="削除", style=discord.ButtonStyle.red)
         async def delete_button(self, interaction: discord.Interaction, button: ui.Button):
             server = self.manager.get_server_config(interaction.guild.id)
             if self.category == "channel_mapping" and self.key:
@@ -158,12 +161,13 @@ class ConfigManager:
             await interaction.response.send_message("削除しました。", ephemeral=True)
 
     # ------------------------
-    # /edit_config
+    # /edit_config コマンド登録
     # ------------------------
     def register_command(self):
         @self.bot.tree.command(name="edit_config", description="Bot設定を管理")
         async def edit_config(interaction: discord.Interaction):
             server = self.get_server_config(interaction.guild.id)
+
             # 初回管理者登録
             if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(interaction.user.id)
