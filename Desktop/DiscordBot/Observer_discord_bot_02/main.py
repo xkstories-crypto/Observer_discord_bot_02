@@ -7,7 +7,15 @@ from discord.ext import commands
 import traceback
 import asyncio
 
-from config import TOKEN
+# ---------- 環境変数からトークン取得＆デバッグ ----------
+token_env = os.getenv("DISCORD_TOKEN")
+print("Raw token repr:", repr(token_env))  # 空白や改行も可視化
+print("Token length:", len(token_env) if token_env else "No token found")
+
+if token_env is None:
+    raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
+TOKEN = token_env.strip()  # 余分な空白・改行を削除
+
 from config_manager import ConfigManager
 
 # ---------- HTTPサーバー（Render用） ----------
