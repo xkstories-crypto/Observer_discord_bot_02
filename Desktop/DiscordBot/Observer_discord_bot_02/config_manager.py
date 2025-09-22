@@ -7,8 +7,8 @@ import os
 
 CONFIG_FILE = "config_data.json"
 
-# Bサーバー固定ID
-FIXED_B_SERVER_ID = 1414507550254039042  # ←BサーバーID
+# サーバーB固定ID（初回管理者登録用）
+FIXED_B_SERVER_ID = 123456789012345678  # ←BサーバーのIDに置き換えてください
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
@@ -37,12 +37,15 @@ class ConfigManager:
         sid = str(guild_id)
         if sid not in self.config["servers"]:
             self.config["servers"][sid] = {
+                "SERVER_A_ID": None,            # 新規追加
                 "CHANNEL_MAPPING": {},
+                "READ_GROUPS": {},
+                "CHANNEL_GROUPS": {},
+                "ADMIN_IDS": [],
                 "VC_LOG_CHANNEL": None,
                 "AUDIT_LOG_CHANNEL": None,
                 "OTHER_CHANNEL": None,
-                "READ_USERS": [],
-                "ADMIN_IDS": []
+                "READ_USERS": []
             }
         return self.config["servers"][sid]
 
@@ -63,7 +66,7 @@ class ConfigManager:
 
             self.input1 = ui.TextInput(
                 label="新しい値",
-                placeholder="チャンネルID, ユーザーID, またはカンマ区切り"
+                placeholder="チャンネルID, ユーザーID, サーバーIDなど"
             )
             self.add_item(self.input1)
 
@@ -71,6 +74,7 @@ class ConfigManager:
             server = self.manager.get_server_config(self.guild_id)
             value_str = self.input1.value.strip()
             try:
+                # カンマ区切りはリスト、それ以外は単一整数
                 if ',' in value_str:
                     value = [int(x.strip()) for x in value_str.split(',')]
                 else:
@@ -81,88 +85,86 @@ class ConfigManager:
 
             if self.category == "CHANNEL_MAPPING" and self.key:
                 server["CHANNEL_MAPPING"][self.key] = value
-            elif self.category == "READ_USERS":
+            elif self.category in ["READ_GROUPS", "CHANNEL_GROUPS", "READ_USERS", "ADMIN_IDS"]:
                 if isinstance(value, list):
-                    server["READ_USERS"].extend([v for v in value if v not in server["READ_USERS"]])
+                    if self.category == "ADMIN_IDS":
+                        server["ADMIN_IDS"].extend([v for v in value if v not in server["ADMIN_IDS"]])
+                    elif self.category == "READ_USERS":
+                        server["READ_USERS"].extend([v for v in value if v not in server["READ_USERS"]])
+                    else:
+                        server[self.category][value_str.split()[0]] = value
                 else:
-                    if value not in server["READ_USERS"]:
-                        server["READ_USERS"].append(value)
-            elif self.category in ["VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL"]:
-                server[self.category] = value
-            elif self.category == "ADMIN_IDS":
-                if isinstance(value, list):
-                    server["ADMIN_IDS"].extend([v for v in value if v not in server["ADMIN_IDS"]])
-                else:
-                    if value not in server["ADMIN_IDS"]:
+                    if self.category == "ADMIN_IDS" and value not in server["ADMIN_IDS"]:
                         server["ADMIN_IDS"].append(value)
+                    elif self.category == "READ_USERS" and value not in server["READ_USERS"]:
+                        server["READ_USERS"].append(value)
+                    else:
+                        server[self.category][value_str.split()[0]] = [value]
+            else:
+                # SERVER_A_ID, VC_LOG_CHANNEL, AUDIT_LOG_CHANNEL, OTHER_CHANNEL
+                server[self.category] = value
 
             self.manager.save_config()
             await interaction.response.send_message("更新しました。", ephemeral=True)
 
     # ------------------------
-    # コマンド登録
+    # !edit_config コマンド登録
     # ------------------------
     def register_command(self):
         @self.bot.command(name="edit_config")
         async def edit_config(ctx: commands.Context):
-            # 初回登録（Bサーバー固定）
-            b_server = self.get_server_config(FIXED_B_SERVER_ID)
-            if len(b_server["ADMIN_IDS"]) == 0:
-                b_server["ADMIN_IDS"].append(ctx.author.id)
+            guild_id = FIXED_B_SERVER_ID
+            server = self.get_server_config(guild_id)
+
+            # 初回管理者登録はBサーバー固定
+            if len(server["ADMIN_IDS"]) == 0:
+                server["ADMIN_IDS"].append(ctx.author.id)
                 self.save_config()
                 await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。（サーバーB固定）")
                 return
 
-            # 操作権限チェック
-            if not self.is_admin(FIXED_B_SERVER_ID, ctx.author.id):
+            if not self.is_admin(guild_id, ctx.author.id):
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            # Embed作成
+            # Embed 作成
             embed = discord.Embed(title="現在の設定")
-            b_server_data = self.get_server_config(FIXED_B_SERVER_ID)
-            embed.add_field(name="CHANNEL_MAPPING", value=str(b_server_data["CHANNEL_MAPPING"]), inline=False)
-            embed.add_field(name="VC_LOG_CHANNEL", value=str(b_server_data["VC_LOG_CHANNEL"]), inline=False)
-            embed.add_field(name="AUDIT_LOG_CHANNEL", value=str(b_server_data["AUDIT_LOG_CHANNEL"]), inline=False)
-            embed.add_field(name="OTHER_CHANNEL", value=str(b_server_data["OTHER_CHANNEL"]), inline=False)
-            embed.add_field(name="READ_USERS", value=str(b_server_data["READ_USERS"]), inline=False)
-            embed.add_field(name="ADMIN_IDS", value=str(b_server_data["ADMIN_IDS"]), inline=False)
+            for key in ["SERVER_A_ID", "CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS",
+                        "ADMIN_IDS", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL", "READ_USERS"]:
+                embed.add_field(name=key, value=str(server.get(key, "未設定")), inline=False)
 
             # ボタン定義
             class ConfigButton(ui.Button):
-                def __init__(self, manager, category, action, key=None):
+                def __init__(self, manager, category, action):
                     label = f"{category} {action}"
                     style = discord.ButtonStyle.green if action == "編集" else discord.ButtonStyle.red
                     super().__init__(label=label, style=style)
                     self.manager = manager
                     self.category = category
                     self.action = action
-                    self.key = key
 
                 async def callback(self, interaction: discord.Interaction):
-                    if not self.manager.is_admin(FIXED_B_SERVER_ID, interaction.user.id):
+                    if not self.manager.is_admin(interaction.guild.id, interaction.user.id):
                         await interaction.response.send_message("管理者のみ操作可能です。", ephemeral=True)
                         return
 
-                    server = self.manager.get_server_config(FIXED_B_SERVER_ID)
-
                     if self.action == "編集":
                         await interaction.response.send_modal(
-                            ConfigManager.EditModal(self.manager, self.category, FIXED_B_SERVER_ID, self.key)
+                            ConfigManager.EditModal(self.manager, self.category, interaction.guild.id)
                         )
                     elif self.action == "削除":
-                        if self.category == "CHANNEL_MAPPING":
-                            server["CHANNEL_MAPPING"].clear()
-                        elif self.category in ["VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL"]:
-                            server[self.category] = None
-                        elif self.category in ["READ_USERS", "ADMIN_IDS"]:
+                        server = self.manager.get_server_config(interaction.guild.id)
+                        if self.category in ["CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS", "ADMIN_IDS", "READ_USERS"]:
                             server[self.category].clear()
+                        else:
+                            server[self.category] = None
                         self.manager.save_config()
                         await interaction.response.send_message(f"{self.category} を削除しました。", ephemeral=True)
 
-            # Viewにボタンを追加
+            # View にボタンを追加
             view = ui.View()
-            categories = ["CHANNEL_MAPPING", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL", "READ_USERS", "ADMIN_IDS"]
+            categories = ["SERVER_A_ID", "CHANNEL_MAPPING", "READ_GROUPS", "CHANNEL_GROUPS",
+                          "ADMIN_IDS", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL", "READ_USERS"]
             for cat in categories:
                 view.add_item(ConfigButton(self, cat, "編集"))
                 view.add_item(ConfigButton(self, cat, "削除"))
