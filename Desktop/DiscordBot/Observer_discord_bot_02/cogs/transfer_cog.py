@@ -1,28 +1,39 @@
-import discord
+# cogs/transfer_cog.py
 from discord.ext import commands
-from config import SERVER_A_ID, SERVER_B_ID, CHANNEL_MAPPING
+import discord
+from config_manager import ConfigManager
 
 class TransferCog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
         self.bot = bot
+        self.config_manager = config_manager
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.author.bot:
+        if message.author.bot or not message.guild:
             return
 
-        if message.guild.id != SERVER_A_ID:
+        server_conf = self.config_manager.get_server_config(message.guild.id)
+        if not server_conf:
             await self.bot.process_commands(message)
             return
 
-        guild_b = self.bot.get_guild(SERVER_B_ID)
-        dest_channel_id = CHANNEL_MAPPING.get(message.channel.id, CHANNEL_MAPPING.get("a_other"))
+        server_a_id = server_conf.get("SERVER_A_ID")
+        server_b_id = server_conf.get("SERVER_B_ID")
+        channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
+
+        if message.guild.id != server_a_id:
+            await self.bot.process_commands(message)
+            return
+
+        guild_b = self.bot.get_guild(server_b_id)
+        dest_channel_id = channel_mapping.get(message.channel.id, channel_mapping.get("a_other"))
         dest_channel = guild_b.get_channel(dest_channel_id) if guild_b else None
 
         if dest_channel:
-            # a_otherの場合はチャンネル名を添えてEmbedを作る
+            # a_otherの場合は元チャンネル名を添えてEmbedを作る
             description = message.content
-            if message.channel.id not in CHANNEL_MAPPING:
+            if message.channel.id not in channel_mapping:
                 description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
 
             embed = discord.Embed(description=description, color=discord.Color.blue())
@@ -60,5 +71,9 @@ class TransferCog(commands.Cog):
 
         await self.bot.process_commands(message)
 
-async def setup(bot):
-    await bot.add_cog(TransferCog(bot))
+# ---------- Cogセットアップ ----------
+async def setup(bot: commands.Bot):
+    config_manager = getattr(bot, "config_manager", None)
+    if not config_manager:
+        raise RuntimeError("ConfigManager が bot にセットされていません")
+    await bot.add_cog(TransferCog(bot, config_manager))
