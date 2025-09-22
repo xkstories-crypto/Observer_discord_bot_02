@@ -1,6 +1,11 @@
 # cogs/owner_cog.py
 from discord.ext import commands
 from config import SERVER_A_ID, SERVER_B_ID, CHANNEL_MAPPING, VC_LOG_CHANNEL, AUDIT_LOG_CHANNEL, ADMIN_IDS, READ_USERS
+import json
+import os
+
+CONFIG_FILE = "data/config_data.json"
+PRESETS_FILE = "presets.json"
 
 class OwnerCog(commands.Cog):
     def __init__(self, bot):
@@ -82,6 +87,71 @@ class OwnerCog(commands.Cog):
             lines.append(f"Server ({guild.id})")
 
         await ctx.send("```\n" + "\n".join(lines) + "\n```")
+
+    # ---------- プリセット保存 ----------
+    @commands.command()
+    async def save_preset(self, ctx, preset_name: str):
+        if ctx.author.id not in ADMIN_IDS:
+            await ctx.send("管理者のみ使用可能です。")
+            return
+
+        # config_data.json 読み込み
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+        else:
+            await ctx.send("サーバー設定が存在しません。まず /edit_config を実行してください。")
+            return
+
+        server_conf = config_data.get("servers", {}).get(str(ctx.guild.id))
+        if not server_conf:
+            await ctx.send("このサーバーの設定が存在しません。まず /edit_config を実行してください。")
+            return
+
+        # presets.json 読み込み
+        if os.path.exists(PRESETS_FILE):
+            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+                presets = json.load(f)
+        else:
+            presets = {}
+
+        presets[preset_name] = server_conf.copy()
+        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(presets, f, indent=2, ensure_ascii=False)
+
+        await ctx.send(f"プリセット `{preset_name}` を保存しました。")
+
+    # ---------- プリセット適用 ----------
+    @commands.command()
+    async def load_preset(self, ctx, preset_name: str):
+        if ctx.author.id not in ADMIN_IDS:
+            await ctx.send("管理者のみ使用可能です。")
+            return
+
+        if not os.path.exists(PRESETS_FILE):
+            await ctx.send("プリセットが存在しません。")
+            return
+
+        with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+            presets = json.load(f)
+
+        preset_conf = presets.get(preset_name)
+        if not preset_conf:
+            await ctx.send(f"プリセット `{preset_name}` が存在しません。")
+            return
+
+        # config_data.json に適用
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+        else:
+            config_data = {"servers": {}}
+
+        config_data["servers"][str(ctx.guild.id)] = preset_conf
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+        await ctx.send(f"プリセット `{preset_name}` をこのサーバーに適用しました。")
 
 
 async def setup(bot):
