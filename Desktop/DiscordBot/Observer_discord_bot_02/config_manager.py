@@ -7,9 +7,6 @@ import os
 
 CONFIG_FILE = "config_data.json"
 
-# サーバーB固定ID（初回管理者登録用）
-FIXED_B_SERVER_ID = 123456789012345678  # ←BサーバーのIDに置き換えてください
-
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
