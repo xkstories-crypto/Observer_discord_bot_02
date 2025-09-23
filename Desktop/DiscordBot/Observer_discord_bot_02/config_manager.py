@@ -110,12 +110,19 @@ class ConfigManager:
             guild_id = FIXED_B_SERVER_ID
             server = self.get_server_config(guild_id)
 
-            # 初回管理者登録はBサーバー固定
-            if len(server["ADMIN_IDS"]) == 0:
-                server["ADMIN_IDS"].append(ctx.author.id)
-                self.save_config()
-                await ctx.send(f"初回設定: {ctx.author.display_name} を管理者として登録しました。（サーバーB固定）")
-                return
+           # 初回管理者登録はBサーバー固定
+    if len(server["ADMIN_IDS"]) == 0:
+        server["ADMIN_IDS"].append(ctx.author.id)
+    
+        # 使用されたサーバーを SERVER_B_ID に設定
+        server["SERVER_B_ID"] = ctx.guild.id  # ←追加
+        
+        self.save_config()
+        await ctx.send(
+            f"初回設定: {ctx.author.display_name} を管理者として登録しました。（サーバーB固定）\n"
+            f"使用サーバー: {ctx.guild.id} を SERVER_B_ID に設定しました。"
+        )
+        return
 
             if not self.is_admin(guild_id, ctx.author.id):
                 await ctx.send("管理者のみ使用可能です。")
