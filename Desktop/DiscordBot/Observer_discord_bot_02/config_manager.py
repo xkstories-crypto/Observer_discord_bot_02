@@ -1,32 +1,33 @@
 def register_command(self):
     @self.bot.command(name="edit_config")
     async def edit_config(ctx: commands.Context):
-        guild_id = ctx.guild.id  # コマンドが使われたサーバーID
-        server = self.get_server_config(FIXED_B_SERVER_ID)  # Bサーバー固定
+        guild_id = FIXED_B_SERVER_ID
+        server = self.get_server_config(guild_id)
 
-        # 初回管理者登録はBサーバー固定
+        # 初回管理者登録かつ使用サーバーも登録
         if len(server["ADMIN_IDS"]) == 0:
             server["ADMIN_IDS"].append(ctx.author.id)
-            # ここで使用されたサーバーも登録
-            server["SERVER_A_ID"] = guild_id
+            server["SERVER_A_ID"] = ctx.guild.id  # 使用されたサーバーを SERVER_A_ID に設定
             self.save_config()
             await ctx.send(
                 f"初回設定: {ctx.author.display_name} を管理者として登録しました。\n"
-                f"使用されたサーバー {ctx.guild.name} を SERVER_A_ID に設定しました。"
+                f"このサーバー（{ctx.guild.name}）を SERVER_A_ID に設定しました。"
             )
             return
 
-        if not self.is_admin(FIXED_B_SERVER_ID, ctx.author.id):
+        # 管理者チェック
+        if not self.is_admin(guild_id, ctx.author.id):
             await ctx.send("管理者のみ使用可能です。")
             return
 
-        # 以下、Embed とボタンは以前と同じ処理
+        # Embed 作成
         embed = discord.Embed(title="現在の設定")
         for key in ["SERVER_A_ID", "CHANNEL_MAPPING", "READ_GROUPS",
                     "ADMIN_IDS", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL",
                     "OTHER_CHANNEL", "READ_USERS"]:
             embed.add_field(name=key, value=str(server.get(key, "未設定")), inline=False)
 
+        # ボタン定義
         class ConfigButton(ui.Button):
             def __init__(self, manager, category, action):
                 label = f"{category} {action}"
@@ -54,6 +55,7 @@ def register_command(self):
                     self.manager.save_config()
                     await interaction.response.send_message(f"{self.category} を削除しました。", ephemeral=True)
 
+        # View にボタンを追加
         view = ui.View()
         categories = ["SERVER_A_ID", "CHANNEL_MAPPING", "READ_GROUPS",
                       "ADMIN_IDS", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL",
