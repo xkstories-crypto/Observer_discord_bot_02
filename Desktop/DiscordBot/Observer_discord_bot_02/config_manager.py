@@ -34,7 +34,7 @@ class ConfigManager:
         sid = str(guild_id)
         if sid not in self.config["servers"]:
             self.config["servers"][sid] = {
-                "SERVER_A_ID": None,            
+                "SERVER_A_ID": None,
                 "CHANNEL_MAPPING": {},
                 "READ_GROUPS": {},
                 "ADMIN_IDS": [],
@@ -107,23 +107,24 @@ class ConfigManager:
     def register_command(self):
         @self.bot.command(name="edit_config")
         async def edit_config(ctx: commands.Context):
-            guild_id = FIXED_B_SERVER_ID
+            guild_id = ctx.guild.id
             server = self.get_server_config(guild_id)
 
-           # 初回管理者登録はBサーバー固定
-    if len(server["ADMIN_IDS"]) == 0:
-        server["ADMIN_IDS"].append(ctx.author.id)
-    
-        # 使用されたサーバーを SERVER_B_ID に設定
-        server["SERVER_B_ID"] = ctx.guild.id  # ←追加
-        
-        self.save_config()
-        await ctx.send(
-            f"初回設定: {ctx.author.display_name} を管理者として登録しました。（サーバーB固定）\n"
-            f"使用サーバー: {ctx.guild.id} を SERVER_B_ID に設定しました。"
-        )
-        return
+            # 初回管理者登録
+            if len(server["ADMIN_IDS"]) == 0:
+                server["ADMIN_IDS"].append(ctx.author.id)
 
+                # 使用されたサーバーを SERVER_B_ID に設定
+                server["SERVER_B_ID"] = ctx.guild.id
+
+                self.save_config()
+                await ctx.send(
+                    f"初回設定: {ctx.author.display_name} を管理者として登録しました。\n"
+                    f"使用サーバー: {ctx.guild.id} を SERVER_B_ID に設定しました。"
+                )
+                return
+
+            # 管理者チェック
             if not self.is_admin(guild_id, ctx.author.id):
                 await ctx.send("管理者のみ使用可能です。")
                 return
