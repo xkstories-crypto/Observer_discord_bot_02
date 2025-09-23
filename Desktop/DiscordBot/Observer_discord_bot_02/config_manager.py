@@ -7,9 +7,6 @@ import os
 
 CONFIG_FILE = "config_data.json"
 
-guild_id = ctx.guild.id  # 初回使用サーバーをここで取得
-server = self.get_server_config(guild_id)
-
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
