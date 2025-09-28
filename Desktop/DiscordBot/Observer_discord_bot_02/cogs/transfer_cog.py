@@ -3,80 +3,72 @@ from discord.ext import commands
 import discord
 from config_manager import ConfigManager
 
+# Discord 上でログを出すチャンネルID
+DEBUG_LOG_CHANNEL_ID = 1421789999999999999  # ←あなたの確認用チャンネルIDに置き換えてください
+
 class TransferCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
         self.bot = bot
         self.config_manager = config_manager
-        print("[DEBUG] TransferCog loaded")
+
+    async def log(self, msg: str):
+        """Discord 上でデバッグログを送信"""
+        log_channel = self.bot.get_channel(DEBUG_LOG_CHANNEL_ID)
+        if log_channel:
+            await log_channel.send(f"[DEBUG] {msg}")
+        else:
+            print(f"[DEBUG] {msg}")
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        print(f"[DEBUG] on_message triggered: guild={getattr(message.guild, 'name', None)}, "
-              f"guild_id={getattr(message.guild, 'id', None)}, "
-              f"channel={getattr(message.channel, 'name', None)}, "
-              f"channel_id={getattr(message.channel, 'id', None)}, "
-              f"author={message.author}, bot={message.author.bot}")
+        await self.log(f"on_message triggered: guild={getattr(message.guild, 'name', None)}, channel={getattr(message.channel, 'name', None)}, author={message.author}")
 
-        # BotメッセージやDMは無視
         if message.author.bot or not message.guild:
-            print("[DEBUG] Ignored: bot message or no guild")
+            await self.log("Ignored: bot message or no guild")
             return
 
         # サーバー設定取得
         server_conf = self.config_manager.get_server_config(message.guild.id)
         if not server_conf:
-            print("[DEBUG] Ignored: no server config for this guild")
+            await self.log("Ignored: no server config for this guild")
             await self.bot.process_commands(message)
             return
 
         server_a_id = server_conf.get("SERVER_A_ID")
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
-        other_channel_id = server_conf.get("OTHER_CHANNEL")
 
-        # intにキャスト
+        # int にキャスト
         try:
             server_a_id = int(server_a_id)
             server_b_id = int(server_b_id)
         except (TypeError, ValueError):
-            print("[DEBUG] server_a_id or server_b_id not set or invalid")
+            await self.log("Ignored: SERVER_A_ID or SERVER_B_ID is invalid")
             await self.bot.process_commands(message)
             return
 
-        print(f"[DEBUG] server_a_id={server_a_id}, server_b_id={server_b_id}")
+        await self.log(f"server_a_id={server_a_id}, server_b_id={server_b_id}")
 
-        # SERVER_A_ID以外のメッセージは無視
         if message.guild.id != server_a_id:
-            print("[DEBUG] Ignored: message not from SERVER_A_ID")
+            await self.log("Ignored: message not from SERVER_A_ID")
             await self.bot.process_commands(message)
             return
 
-        # SERVER_B取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
-            print("[DEBUG] Guild B not found")
+            await self.log("Guild B not found")
             await self.bot.process_commands(message)
             return
 
-        # 転送先チャンネルID取得
-        dest_channel_id = channel_mapping.get(str(message.channel.id)) \
-                          or channel_mapping.get(message.channel.id) \
-                          or other_channel_id
+        dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
+        dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
 
-        if not dest_channel_id:
-            print("[DEBUG] Dest channel ID not found for this message")
-            await self.bot.process_commands(message)
-            return
-
-        dest_channel = guild_b.get_channel(dest_channel_id)
         if not dest_channel:
-            print("[DEBUG] Dest channel object not found")
+            await self.log("Dest channel not found in B server")
             await self.bot.process_commands(message)
             return
 
-        print(f"[DEBUG] Dest channel found: {dest_channel.name} ({dest_channel.id})")
-
-        # Embed作成
+        # Embed 作成
         description = message.content
         if str(message.channel.id) not in channel_mapping:
             description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
@@ -87,21 +79,20 @@ class TransferCog(commands.Cog):
             icon_url=message.author.avatar.url if message.author.avatar else None
         )
 
-        # 画像添付をEmbedに
+        # 添付画像を Embed に
         first_image = next((a.url for a in message.attachments
                             if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
 
-        # Embed送信
         await dest_channel.send(embed=embed)
-        print(f"[DEBUG] Embed sent to {dest_channel.name}")
+        await self.log(f"Message sent to {dest_channel.name}")
 
-        # 残りの添付ファイル
+        # その他添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
-                print(f"[DEBUG] Attachment sent: {attach.url}")
+                await self.log(f"Attachment sent: {attach.url}")
 
         # 役職メンション
         if message.role_mentions:
@@ -112,17 +103,17 @@ class TransferCog(commands.Cog):
                     mentions.append(target_role.mention)
             if mentions:
                 await dest_channel.send(" ".join(mentions))
-                print(f"[DEBUG] Roles mentioned: {' '.join(mentions)}")
+                await self.log(f"Roles mentioned: {' '.join(mentions)}")
 
-        # メッセージ内URL
+        # メッセージ内 URL
         urls = [word for word in message.content.split() if word.startswith("http")]
         for url in urls:
             await dest_channel.send(url)
-            print(f"[DEBUG] URL sent: {url}")
+            await self.log(f"URL sent: {url}")
 
         await self.bot.process_commands(message)
 
-
+# Cogセットアップ
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
