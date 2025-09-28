@@ -1,4 +1,3 @@
-# cogs/transfer_cog.py
 from discord.ext import commands
 import discord
 from config_manager import ConfigManager
@@ -11,14 +10,11 @@ class TransferCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # ボットのメッセージは無視
         if message.author.bot or not message.guild:
             return
 
-        # ConfigManager からサーバー設定を取得
         server_conf = self.config_manager.get_server_config_by_message(message)
         if not server_conf:
-            # このメッセージに対応する設定がなければスキップ
             await self.bot.process_commands(message)
             return
 
@@ -26,18 +22,15 @@ class TransferCog(commands.Cog):
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # メッセージが SERVER_A_ID のチャンネルでない場合は無視
         if message.guild.id != server_a_id:
             await self.bot.process_commands(message)
             return
 
-        # SERVER_B_ID のギルド取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
             await self.bot.process_commands(message)
             return
 
-        # 送信先チャンネル取得
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
         dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
         if not dest_channel:
@@ -56,21 +49,18 @@ class TransferCog(commands.Cog):
         )
 
         # 添付画像を Embed に
-        first_image = next(
-            (a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None
-        )
+        first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
 
-        # Embed を送信
         await dest_channel.send(embed=embed)
 
-        # その他添付ファイルを送信
+        # その他添付
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
 
-        # メッセージ内 URL を個別送信
+        # URL
         urls = [word for word in message.content.split() if word.startswith("http")]
         for url in urls:
             await dest_channel.send(url)
@@ -88,7 +78,6 @@ class TransferCog(commands.Cog):
         await self.bot.process_commands(message)
 
 
-# Cog のセットアップ
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
