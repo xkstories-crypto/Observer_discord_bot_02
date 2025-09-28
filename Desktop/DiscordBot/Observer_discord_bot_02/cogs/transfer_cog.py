@@ -1,4 +1,3 @@
-
 # cogs/transfer_cog.py
 from discord.ext import commands
 import discord
@@ -23,18 +22,24 @@ class TransferCog(commands.Cog):
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
+        # Aサーバー以外は処理しない
         if message.guild.id != server_a_id:
             await self.bot.process_commands(message)
             return
 
         guild_b = self.bot.get_guild(server_b_id)
-        dest_channel_id = channel_mapping.get(message.channel.id, channel_mapping.get("a_other"))
-        dest_channel = guild_b.get_channel(dest_channel_id) if guild_b else None
+        if not guild_b:
+            await self.bot.process_commands(message)
+            return
+
+        # 文字列キーに変換して取得
+        dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
+        dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
 
         if dest_channel:
-            # a_otherの場合は元チャンネル名を添えてEmbedを作る
+            # 元チャンネル名を添えてEmbed作成
             description = message.content
-            if message.channel.id not in channel_mapping:
+            if str(message.channel.id) not in channel_mapping:
                 description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
 
             embed = discord.Embed(description=description, color=discord.Color.blue())
@@ -50,7 +55,7 @@ class TransferCog(commands.Cog):
 
             await dest_channel.send(embed=embed)
 
-            # 動画や残りの添付ファイルは普通に送信
+            # 残りの添付ファイルは個別送信
             for attach in message.attachments:
                 if attach.url != first_image:
                     await dest_channel.send(attach.url)
