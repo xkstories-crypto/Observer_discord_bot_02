@@ -77,6 +77,19 @@ class TransferCog(commands.Cog):
 
         await self.bot.process_commands(message)
 
+guild_b = self.bot.get_guild(server_b_id)
+if not guild_b:
+    print("Guild B not found")
+    await self.bot.process_commands(message)
+    return
+
+dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
+print(f"Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
+
+dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
+if not dest_channel:
+    print("Dest channel not found in B server")
+
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
