@@ -29,66 +29,60 @@ class TransferCog(commands.Cog):
 
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
+            print("Guild B not found")
             await self.bot.process_commands(message)
             return
 
         # 文字列キーに変換して取得
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
+        print(f"Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
+
         dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
+        if not dest_channel:
+            print("Dest channel not found in B server")
+            await self.bot.process_commands(message)
+            return
 
-        if dest_channel:
-            # 元チャンネル名を添えてEmbed作成
-            description = message.content
-            if str(message.channel.id) not in channel_mapping:
-                description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
+        # 元チャンネル名を添えてEmbed作成
+        description = message.content
+        if str(message.channel.id) not in channel_mapping:
+            description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
 
-            embed = discord.Embed(description=description, color=discord.Color.blue())
-            embed.set_author(
-                name=message.author.display_name,
-                icon_url=message.author.avatar.url if message.author.avatar else None
-            )
+        embed = discord.Embed(description=description, color=discord.Color.blue())
+        embed.set_author(
+            name=message.author.display_name,
+            icon_url=message.author.avatar.url if message.author.avatar else None
+        )
 
-            # 画像だけEmbedに
-            first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
-            if first_image:
-                embed.set_image(url=first_image)
+        # 画像だけEmbedに
+        first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
+        if first_image:
+            embed.set_image(url=first_image)
 
-            await dest_channel.send(embed=embed)
+        await dest_channel.send(embed=embed)
 
-            # 残りの添付ファイルは個別送信
-            for attach in message.attachments:
-                if attach.url != first_image:
-                    await dest_channel.send(attach.url)
+        # 残りの添付ファイルは個別送信
+        for attach in message.attachments:
+            if attach.url != first_image:
+                await dest_channel.send(attach.url)
 
-            # 役職メンション
-            if message.role_mentions:
-                mentions = []
-                for role in message.role_mentions:
-                    target_role = discord.utils.get(guild_b.roles, name=role.name)
-                    if target_role:
-                        mentions.append(target_role.mention)
-                if mentions:
-                    await dest_channel.send(" ".join(mentions))
+        # 役職メンション
+        if message.role_mentions:
+            mentions = []
+            for role in message.role_mentions:
+                target_role = discord.utils.get(guild_b.roles, name=role.name)
+                if target_role:
+                    mentions.append(target_role.mention)
+            if mentions:
+                await dest_channel.send(" ".join(mentions))
 
-            # メッセージ内URLも個別送信
-            urls = [word for word in message.content.split() if word.startswith("http")]
-            for url in urls:
-                await dest_channel.send(url)
+        # メッセージ内URLも個別送信
+        urls = [word for word in message.content.split() if word.startswith("http")]
+        for url in urls:
+            await dest_channel.send(url)
 
+        # 最後にコマンドも処理
         await self.bot.process_commands(message)
-
-guild_b = self.bot.get_guild(server_b_id)
-if not guild_b:
-    print("Guild B not found")
-    await self.bot.process_commands(message)
-    return
-
-dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
-print(f"Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
-
-dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
-if not dest_channel:
-    print("Dest channel not found in B server")
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
