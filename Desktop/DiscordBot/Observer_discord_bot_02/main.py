@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 import traceback
 import asyncio
+from config_manager import ConfigManager
 
 # ---------- 環境変数からトークン取得＆デバッグ ----------
 token_env = os.getenv("DISCORD_TOKEN")
@@ -14,9 +15,7 @@ print("Token length:", len(token_env) if token_env else "No token found")
 
 if token_env is None:
     raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
-TOKEN = token_env.strip()  # 余分な空白・改行を削除
-
-from config_manager import ConfigManager
+TOKEN = token_env.strip()
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -43,12 +42,30 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- ConfigManager ----------
 config_manager = ConfigManager(bot)
-bot.config_manager = config_manager  # ←ここを追加
+bot.config_manager = config_manager  # Cog で使用できるように属性追加
+
+# ---------- 一時確認コマンド（管理者限定） ----------
+@bot.command(name="show_config")
+async def show_config(ctx):
+    # 管理者だけ許可
+    server_conf = bot.config_manager.get_server_config(ctx.guild.id)
+    admin_ids = server_conf.get("ADMIN_IDS", [])
+    if ctx.author.id not in admin_ids:
+        await ctx.send("❌ 管理者のみ使用可能です。")
+        return
+
+    try:
+        with open("config_data.json", "r", encoding="utf-8") as f:
+            data = f.read()
+        if len(data) > 1900:
+            data = data[:1900] + "..."
+        await ctx.send(f"```json\n{data}\n```")
+    except Exception as e:
+        await ctx.send(f"エラー: {e}")
 
 # ---------- Cog のロード ----------
 async def main():
     async with bot:
-        # ロードする Cog のリスト
         cogs = [
             "cogs.transfer_cog",
             "cogs.vc_cog",
@@ -58,7 +75,6 @@ async def main():
 
         for cog_path in cogs:
             try:
-                # Cog のロード
                 await bot.load_extension(cog_path)
                 print(f"[✅] Loaded {cog_path}")
             except Exception as e:
@@ -74,7 +90,6 @@ async def main():
             for cmd in bot.commands:
                 print(f" - {cmd.name}")
 
-        # Bot を起動
         await bot.start(TOKEN)
 
 # ---------- 非同期で実行 ----------
