@@ -1,4 +1,4 @@
-# cogs/transfer_cog.py
+# cogs/transfer_cog_debug.py
 from discord.ext import commands
 import discord
 from config_manager import ConfigManager
@@ -9,10 +9,11 @@ class TransferCog(commands.Cog):
         self.config_manager = config_manager
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        # Bot自身のメッセージは無視
+    async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
+
+        print(f"[DEBUG] on_message triggered: {message.guild.name} / {message.channel.name} / {message.author}")
 
         # 設定取得
         server_conf = self.config_manager.get_server_config(message.guild.id)
@@ -20,27 +21,32 @@ class TransferCog(commands.Cog):
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # Aサーバー以外のメッセージは無視
+        print(f"[DEBUG] SERVER_A_ID: {server_a_id}, SERVER_B_ID: {server_b_id}")
+
+        # Aサーバー以外は無視
         if message.guild.id != server_a_id:
+            print(f"[DEBUG] Message not from SERVER_A_ID, skipping")
             await self.bot.process_commands(message)
             return
 
         # Bサーバー取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
-            print(f"[⚠] Guild B not found (ID: {server_b_id})")
+            print("[ERROR] Guild B not found")
             await self.bot.process_commands(message)
             return
 
-        # 送信先チャンネル取得（文字列キー）
+        # 送信先チャンネル取得
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
-        print(f"[ℹ] Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
+        print(f"[DEBUG] Source: {message.channel.name} ({message.channel.id}) -> Dest ID: {dest_channel_id}")
 
         dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
         if not dest_channel:
-            print(f"[⚠] Dest channel not found in B server for ID: {dest_channel_id}")
+            print("[ERROR] Dest channel not found in B server")
             await self.bot.process_commands(message)
             return
+
+        print(f"[DEBUG] Sending message to: {dest_channel.name} ({dest_channel.id})")
 
         # Embed作成
         description = message.content
@@ -54,19 +60,20 @@ class TransferCog(commands.Cog):
         )
 
         # 添付画像をEmbedに
-        first_image = next(
-            (a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")),
-            None
-        )
+        first_image = next((a.url for a in message.attachments
+                            if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
+            print(f"[DEBUG] Embed image: {first_image}")
 
         await dest_channel.send(embed=embed)
+        print("[DEBUG] Embed sent")
 
-        # 残りの添付ファイル
+        # その他添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
+                print(f"[DEBUG] Sent attachment: {attach.url}")
 
         # 役職メンション
         if message.role_mentions:
@@ -77,14 +84,17 @@ class TransferCog(commands.Cog):
                     mentions.append(target_role.mention)
             if mentions:
                 await dest_channel.send(" ".join(mentions))
+                print(f"[DEBUG] Sent role mentions: {mentions}")
 
         # メッセージ内URLも個別送信
         urls = [word for word in message.content.split() if word.startswith("http")]
         for url in urls:
             await dest_channel.send(url)
+            print(f"[DEBUG] Sent URL: {url}")
 
         # 最後にコマンド処理
         await self.bot.process_commands(message)
+        print("[DEBUG] Finished processing message")
 
 
 # ---------- Cogセットアップ ----------
