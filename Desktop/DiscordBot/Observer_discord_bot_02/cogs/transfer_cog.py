@@ -9,7 +9,8 @@ class TransferCog(commands.Cog):
         self.config_manager = config_manager
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
+        # Bot自身のメッセージは無視
         if message.author.bot or not message.guild:
             return
 
@@ -19,7 +20,7 @@ class TransferCog(commands.Cog):
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # Aサーバー以外は無視
+        # Aサーバー以外のメッセージは無視
         if message.guild.id != server_a_id:
             await self.bot.process_commands(message)
             return
@@ -27,17 +28,17 @@ class TransferCog(commands.Cog):
         # Bサーバー取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
-            print("Guild B not found")
+            print(f"[⚠] Guild B not found (ID: {server_b_id})")
             await self.bot.process_commands(message)
             return
 
-        # 送信先チャンネル取得
+        # 送信先チャンネル取得（文字列キー）
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
-        print(f"Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
+        print(f"[ℹ] Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
 
         dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
         if not dest_channel:
-            print("Dest channel not found in B server")
+            print(f"[⚠] Dest channel not found in B server for ID: {dest_channel_id}")
             await self.bot.process_commands(message)
             return
 
@@ -53,14 +54,16 @@ class TransferCog(commands.Cog):
         )
 
         # 添付画像をEmbedに
-        first_image = next((a.url for a in message.attachments
-                            if a.content_type and a.content_type.startswith("image/")), None)
+        first_image = next(
+            (a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")),
+            None
+        )
         if first_image:
             embed.set_image(url=first_image)
 
         await dest_channel.send(embed=embed)
 
-        # その他添付ファイル
+        # 残りの添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
