@@ -13,27 +13,25 @@ class TransferCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        # 設定取得
         server_conf = self.config_manager.get_server_config(message.guild.id)
-        if not server_conf:
-            await self.bot.process_commands(message)
-            return
-
         server_a_id = server_conf.get("SERVER_A_ID")
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # Aサーバー以外は処理しない
+        # Aサーバー以外は無視
         if message.guild.id != server_a_id:
             await self.bot.process_commands(message)
             return
 
+        # Bサーバー取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
             print("Guild B not found")
             await self.bot.process_commands(message)
             return
 
-        # 文字列キーに変換して取得
+        # 送信先チャンネル取得
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
         print(f"Source: {message.channel.name} ({message.channel.id}) -> Dest: {dest_channel_id}")
 
@@ -43,7 +41,7 @@ class TransferCog(commands.Cog):
             await self.bot.process_commands(message)
             return
 
-        # 元チャンネル名を添えてEmbed作成
+        # Embed作成
         description = message.content
         if str(message.channel.id) not in channel_mapping:
             description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
@@ -54,14 +52,15 @@ class TransferCog(commands.Cog):
             icon_url=message.author.avatar.url if message.author.avatar else None
         )
 
-        # 画像だけEmbedに
-        first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
+        # 添付画像をEmbedに
+        first_image = next((a.url for a in message.attachments
+                            if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
 
         await dest_channel.send(embed=embed)
 
-        # 残りの添付ファイルは個別送信
+        # その他添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
@@ -81,8 +80,9 @@ class TransferCog(commands.Cog):
         for url in urls:
             await dest_channel.send(url)
 
-        # 最後にコマンドも処理
+        # 最後にコマンド処理
         await self.bot.process_commands(message)
+
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
