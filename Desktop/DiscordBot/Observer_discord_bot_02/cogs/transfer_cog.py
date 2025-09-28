@@ -1,71 +1,69 @@
-# cogs/transfer_cog.py
+# cogs/transfer_debug_cog.py
 from discord.ext import commands
 import discord
 from config_manager import ConfigManager
 
-# Discord 上でログを出すチャンネルID
-DEBUG_LOG_CHANNEL_ID = 1421789999999999999  # ←あなたの確認用チャンネルIDに置き換えてください
-
-class TransferCog(commands.Cog):
+class TransferDebugCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
         self.bot = bot
         self.config_manager = config_manager
-
-    async def log(self, msg: str):
-        """Discord 上でデバッグログを送信"""
-        log_channel = self.bot.get_channel(DEBUG_LOG_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send(f"[DEBUG] {msg}")
-        else:
-            print(f"[DEBUG] {msg}")
+        print("[DEBUG] TransferDebugCog loaded")
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        await self.log(f"on_message triggered: guild={getattr(message.guild, 'name', None)}, channel={getattr(message.channel, 'name', None)}, author={message.author}")
-
+        # Bot 自身のメッセージは無視
         if message.author.bot or not message.guild:
-            await self.log("Ignored: bot message or no guild")
             return
 
-        # サーバー設定取得
+        # ConfigManager からサーバー設定取得
         server_conf = self.config_manager.get_server_config(message.guild.id)
         if not server_conf:
-            await self.log("Ignored: no server config for this guild")
-            await self.bot.process_commands(message)
+            await message.channel.send(f"[DEBUG] このサーバーの設定がありません: guild={message.guild.id}")
             return
 
         server_a_id = server_conf.get("SERVER_A_ID")
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # int にキャスト
+        # int にキャスト（保存時に文字列だった場合に対応）
         try:
             server_a_id = int(server_a_id)
+        except (TypeError, ValueError):
+            server_a_id = None
+        try:
             server_b_id = int(server_b_id)
         except (TypeError, ValueError):
-            await self.log("Ignored: SERVER_A_ID or SERVER_B_ID is invalid")
-            await self.bot.process_commands(message)
-            return
+            server_b_id = None
 
-        await self.log(f"server_a_id={server_a_id}, server_b_id={server_b_id}")
+        debug_text = (
+            f"[DEBUG] on_message triggered\n"
+            f"guild={message.guild.name} ({message.guild.id})\n"
+            f"channel={message.channel.name} ({message.channel.id})\n"
+            f"author={message.author} ({message.author.id})\n"
+            f"server_a_id={server_a_id}, server_b_id={server_b_id}"
+        )
+        await message.channel.send(debug_text)
 
+        # SERVER_A_ID チェック
         if message.guild.id != server_a_id:
-            await self.log("Ignored: message not from SERVER_A_ID")
-            await self.bot.process_commands(message)
+            await message.channel.send(f"[DEBUG] このメッセージは SERVER_A_ID ではありません。")
             return
 
+        # 転送先ギルド取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
-            await self.log("Guild B not found")
-            await self.bot.process_commands(message)
+            await message.channel.send(f"[DEBUG] SERVER_B_ID のギルドが見つかりません: {server_b_id}")
             return
 
+        # 転送先チャンネル ID 取得
         dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
-        dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
+        if not dest_channel_id:
+            await message.channel.send(f"[DEBUG] チャンネルマッピングがありません: {message.channel.id}")
+            return
 
+        dest_channel = guild_b.get_channel(dest_channel_id)
         if not dest_channel:
-            await self.log("Dest channel not found in B server")
-            await self.bot.process_commands(message)
+            await message.channel.send(f"[DEBUG] 転送先チャンネルが見つかりません: {dest_channel_id}")
             return
 
         # Embed 作成
@@ -85,37 +83,32 @@ class TransferCog(commands.Cog):
         if first_image:
             embed.set_image(url=first_image)
 
-        await dest_channel.send(embed=embed)
-        await self.log(f"Message sent to {dest_channel.name}")
+        # 転送内容を Discord 上で確認用に送信
+        debug_embed_text = f"[DEBUG] Embed 送信予定: {embed.description[:100]}..."  # 長すぎる場合は省略
+        await message.channel.send(debug_embed_text)
 
         # その他添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
-                await dest_channel.send(attach.url)
-                await self.log(f"Attachment sent: {attach.url}")
+                await message.channel.send(f"[DEBUG] 添付ファイル: {attach.url}")
 
         # 役職メンション
         if message.role_mentions:
-            mentions = []
-            for role in message.role_mentions:
-                target_role = discord.utils.get(guild_b.roles, name=role.name)
-                if target_role:
-                    mentions.append(target_role.mention)
-            if mentions:
-                await dest_channel.send(" ".join(mentions))
-                await self.log(f"Roles mentioned: {' '.join(mentions)}")
+            mentions = [role.name for role in message.role_mentions]
+            await message.channel.send(f"[DEBUG] 役職メンション: {', '.join(mentions)}")
 
         # メッセージ内 URL
         urls = [word for word in message.content.split() if word.startswith("http")]
-        for url in urls:
-            await dest_channel.send(url)
-            await self.log(f"URL sent: {url}")
+        if urls:
+            await message.channel.send(f"[DEBUG] URL: {', '.join(urls)}")
 
+        # 最後にコマンド処理
         await self.bot.process_commands(message)
 
-# Cogセットアップ
+
+# ---------- Cog セットアップ ----------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
         raise RuntimeError("ConfigManager が bot にセットされていません")
-    await bot.add_cog(TransferCog(bot, config_manager))
+    await bot.add_cog(TransferDebugCog(bot, config_manager))
