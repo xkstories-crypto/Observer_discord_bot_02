@@ -10,12 +10,23 @@ class TransferCog(commands.Cog):
         print("[DEBUG] TransferCog loaded")
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return  # Bot メッセージや DM は無視
+    async def on_message(self, message):
+        print(f"[DEBUG] on_message triggered: guild={getattr(message.guild, 'name', None)}, "
+              f"guild_id={getattr(message.guild, 'id', None)}, "
+              f"channel={getattr(message.channel, 'name', None)}, "
+              f"channel_id={getattr(message.channel, 'id', None)}, "
+              f"author={message.author}, bot={message.author.bot}")
 
+        # BotメッセージやDMは無視
+        if message.author.bot or not message.guild:
+            print("[DEBUG] Ignored: bot message or no guild")
+            return
+
+        # サーバー設定取得
         server_conf = self.config_manager.get_server_config(message.guild.id)
         if not server_conf:
+            print("[DEBUG] Ignored: no server config for this guild")
+            await self.bot.process_commands(message)
             return
 
         server_a_id = server_conf.get("SERVER_A_ID")
@@ -23,38 +34,51 @@ class TransferCog(commands.Cog):
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
         other_channel_id = server_conf.get("OTHER_CHANNEL")
 
-        # 型変換：JSON 保存時に文字列だった場合に対応
+        # intにキャスト
         try:
             server_a_id = int(server_a_id)
-        except (TypeError, ValueError):
-            server_a_id = None
-        try:
             server_b_id = int(server_b_id)
         except (TypeError, ValueError):
-            server_b_id = None
-
-        if not server_a_id or not server_b_id:
+            print("[DEBUG] server_a_id or server_b_id not set or invalid")
+            await self.bot.process_commands(message)
             return
 
-        # メッセージが送られたサーバーが SERVER_A_ID か確認
+        print(f"[DEBUG] server_a_id={server_a_id}, server_b_id={server_b_id}")
+
+        # SERVER_A_ID以外のメッセージは無視
         if message.guild.id != server_a_id:
+            print("[DEBUG] Ignored: message not from SERVER_A_ID")
+            await self.bot.process_commands(message)
             return
 
+        # SERVER_B取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
+            print("[DEBUG] Guild B not found")
+            await self.bot.process_commands(message)
             return
 
-        # 転送先チャンネル決定
-        dest_channel_id = channel_mapping.get(message.channel.id, other_channel_id)
+        # 転送先チャンネルID取得
+        dest_channel_id = channel_mapping.get(str(message.channel.id)) \
+                          or channel_mapping.get(message.channel.id) \
+                          or other_channel_id
+
         if not dest_channel_id:
+            print("[DEBUG] Dest channel ID not found for this message")
+            await self.bot.process_commands(message)
             return
+
         dest_channel = guild_b.get_channel(dest_channel_id)
         if not dest_channel:
+            print("[DEBUG] Dest channel object not found")
+            await self.bot.process_commands(message)
             return
 
-        # Embed 作成
+        print(f"[DEBUG] Dest channel found: {dest_channel.name} ({dest_channel.id})")
+
+        # Embed作成
         description = message.content
-        if message.channel.id not in channel_mapping:
+        if str(message.channel.id) not in channel_mapping:
             description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
 
         embed = discord.Embed(description=description, color=discord.Color.blue())
@@ -63,18 +87,21 @@ class TransferCog(commands.Cog):
             icon_url=message.author.avatar.url if message.author.avatar else None
         )
 
-        # 添付画像を Embed に
+        # 画像添付をEmbedに
         first_image = next((a.url for a in message.attachments
                             if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
 
+        # Embed送信
         await dest_channel.send(embed=embed)
+        print(f"[DEBUG] Embed sent to {dest_channel.name}")
 
-        # その他添付ファイル
+        # 残りの添付ファイル
         for attach in message.attachments:
             if attach.url != first_image:
                 await dest_channel.send(attach.url)
+                print(f"[DEBUG] Attachment sent: {attach.url}")
 
         # 役職メンション
         if message.role_mentions:
@@ -85,16 +112,17 @@ class TransferCog(commands.Cog):
                     mentions.append(target_role.mention)
             if mentions:
                 await dest_channel.send(" ".join(mentions))
+                print(f"[DEBUG] Roles mentioned: {' '.join(mentions)}")
 
-        # メッセージ内 URL
+        # メッセージ内URL
         urls = [word for word in message.content.split() if word.startswith("http")]
         for url in urls:
             await dest_channel.send(url)
+            print(f"[DEBUG] URL sent: {url}")
 
         await self.bot.process_commands(message)
 
 
-# Cog セットアップ
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
