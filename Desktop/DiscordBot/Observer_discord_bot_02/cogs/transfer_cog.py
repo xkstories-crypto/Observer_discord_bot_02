@@ -31,28 +31,30 @@ class TransferCog(commands.Cog):
             await self.bot.process_commands(message)
             return
 
-        dest_channel_id = channel_mapping.get(str(message.channel.id), channel_mapping.get("a_other"))
-        dest_channel = guild_b.get_channel(dest_channel_id) if dest_channel_id else None
+        dest_channel_id = channel_mapping.get(str(message.channel.id))
+        if not dest_channel_id:
+            await self.bot.process_commands(message)
+            return
+        dest_channel = guild_b.get_channel(dest_channel_id)
         if not dest_channel:
             await self.bot.process_commands(message)
             return
 
-        # Embed 作成
-        description = message.content
-        if str(message.channel.id) not in channel_mapping:
-            description = f"**元チャンネル:** {message.channel.name}\n{message.content}"
+        # デバッグ
+        print(f"[DEBUG] transfer: {message.guild.id}->{guild_b.id} | {message.channel.id}->{dest_channel.id}")
 
+        # Embed作成
+        description = message.content
         embed = discord.Embed(description=description, color=discord.Color.blue())
         embed.set_author(
             name=message.author.display_name,
             icon_url=message.author.avatar.url if message.author.avatar else None
         )
 
-        # 添付画像を Embed に
+        # 添付画像
         first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
         if first_image:
             embed.set_image(url=first_image)
-
         await dest_channel.send(embed=embed)
 
         # その他添付
