@@ -1,100 +1,140 @@
 # -------------------------
-# transfer_cog.py
+# config_manager.py
 # -------------------------
 import discord
 from discord.ext import commands
-from config_manager import ConfigManager
+import json
+import os
 
-DEBUG_CHANNEL_ID = 1421826461597171733  # デバッグチャンネル
+CONFIG_FILE = "config_data.json"
 
-class TransferCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
+class ConfigManager:
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.config_manager = config_manager
-        print("[DEBUG] TransferCog loaded")
+        self.load_config()
+        self.register_commands()
 
-    async def send_debug(self, text: str):
-        debug_ch = self.bot.get_channel(DEBUG_CHANNEL_ID)
-        if debug_ch:
-            try:
-                await debug_ch.send(f"[DEBUG] {text}")
-            except Exception as e:
-                print(f"[DEBUG ERROR] {e}")
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return
-
-        server_conf = self.config_manager.get_server_config_by_message(message)
-        if not server_conf:
-            await self.bot.process_commands(message)
-            return
-
-        # 双方向転送 A↔B
-        src_guild_id = message.guild.id
-        server_a_id = server_conf.get("SERVER_A_ID")
-        server_b_id = server_conf.get("SERVER_B_ID")
-        channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
-
-        if src_guild_id == server_a_id:
-            dest_guild = self.bot.get_guild(server_b_id)
-        elif src_guild_id == server_b_id:
-            dest_guild = self.bot.get_guild(server_a_id)
+    # ------------------------
+    # 設定ロード/保存
+    # ------------------------
+    def load_config(self):
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                self.config = json.load(f)
         else:
-            await self.bot.process_commands(message)
-            return
+            self.config = {"servers": {}}
 
-        dest_channel_id = channel_mapping.get(str(message.channel.id))
-        if not dest_channel_id:
-            await self.send_debug(f"チャンネルマッピングなし: {message.channel.id}")
-            await self.bot.process_commands(message)
-            return
+    def save_config(self):
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
 
-        dest_channel = dest_guild.get_channel(dest_channel_id)
-        if not dest_channel:
-            await self.send_debug(f"転送先チャンネル取得失敗: {dest_channel_id}")
-            await self.bot.process_commands(message)
-            return
+    # ------------------------
+    # サーバーごとの設定取得
+    # ------------------------
+    def get_server_config(self, guild_id: int):
+        sid = str(guild_id)
+        if sid not in self.config["servers"]:
+            self.config["servers"][sid] = {
+                "SERVER_A_ID": None,
+                "SERVER_B_ID": None,
+                "CHANNEL_MAPPING": {},
+                "READ_GROUPS": {},
+                "ADMIN_IDS": [],
+                "VC_LOG_CHANNEL": None,
+                "AUDIT_LOG_CHANNEL": None,
+                "OTHER_CHANNEL": None,
+                "READ_USERS": []
+            }
+        return self.config["servers"][sid]
 
-        await self.send_debug(f"{message.guild.name}:{message.channel.name} → {dest_guild.name}:{dest_channel.name}")
+    def is_admin(self, guild_id, user_id):
+        server = self.get_server_config(guild_id)
+        return user_id in server["ADMIN_IDS"]
 
-        # Embed作成
-        embed = discord.Embed(description=message.content, color=discord.Color.blue())
-        embed.set_author(name=message.author.display_name, icon_url=message.author.avatar.url if message.author.avatar else None)
+    # ------------------------
+    # メッセージベースでサーバー設定を取得
+    # ------------------------
+    def get_server_config_by_message(self, message: discord.Message):
+        guild_id = message.guild.id
+        conf = self.config["servers"].get(str(guild_id))
+        if conf:
+            return conf
+        for s_conf in self.config["servers"].values():
+            if s_conf.get("SERVER_A_ID") == guild_id:
+                return s_conf
+        return None
 
-        # 添付画像
-        first_image = next((a.url for a in message.attachments if a.content_type and a.content_type.startswith("image/")), None)
-        if first_image:
-            embed.set_image(url=first_image)
-        await dest_channel.send(embed=embed)
+    # ------------------------
+    # コマンド登録
+    # ------------------------
+    def register_commands(self):
+        bot = self.bot
 
-        # その他添付
-        for attach in message.attachments:
-            if attach.url != first_image:
-                await dest_channel.send(attach.url)
+        # -------- !adomin --------
+        @bot.command(name="adomin")
+        async def adomin(ctx: commands.Context):
+            server = self.get_server_config(ctx.guild.id)
+            if len(server["ADMIN_IDS"]) == 0:
+                server["ADMIN_IDS"].append(ctx.author.id)
+                server["SERVER_B_ID"] = ctx.guild.id
+                self.save_config()
+                await ctx.send(
+                    f"✅ 管理者登録完了: {ctx.author.display_name}\n"
+                    f"✅ このサーバーを SERVER_B_ID に設定しました"
+                )
+            else:
+                await ctx.send("すでに管理者が登録されています。")
 
-        # URL
-        urls = [word for word in message.content.split() if word.startswith("http")]
-        for url in urls:
-            await dest_channel.send(url)
+        # -------- !set_server --------
+        @bot.command(name="set_server")
+        async def set_server(ctx: commands.Context, server_a_id: int):
+            server_b_id = ctx.guild.id
+            server_b_conf = self.get_server_config(server_b_id)
 
-        # 役職メンション
-        if message.role_mentions:
-            mentions = []
-            for role in message.role_mentions:
-                target_role = discord.utils.get(dest_guild.roles, name=role.name)
-                if target_role:
-                    mentions.append(target_role.mention)
-            if mentions:
-                await dest_channel.send(" ".join(mentions))
+            if not self.is_admin(server_b_id, ctx.author.id):
+                await ctx.send("管理者のみ使用可能です。")
+                return
 
-        await self.send_debug("転送完了")
-        await self.bot.process_commands(message)
+            # B側にAを紐付け
+            server_b_conf["SERVER_A_ID"] = server_a_id
 
+            # ギルド取得
+            guild_a = bot.get_guild(server_a_id)
+            guild_b = bot.get_guild(server_b_id)
+            if guild_a is None or guild_b is None:
+                await ctx.send("⚠️ 両方のサーバーにBotが参加しているか確認してください")
+                return
 
-async def setup(bot: commands.Bot):
-    config_manager = getattr(bot, "config_manager", None)
-    if not config_manager:
-        raise RuntimeError("ConfigManager が bot にセットされていません")
-    await bot.add_cog(TransferCog(bot, config_manager))
+            # Aサーバー設定取得／作成
+            a_conf = self.get_server_config(guild_a.id)
+            a_conf["SERVER_B_ID"] = guild_b.id
+
+            debug_ch = ctx.channel
+            await debug_ch.send(f"[DEBUG] Aサーバー({guild_a.id}) と Bサーバー({guild_b.id}) の同期開始")
+
+            # ---------- チャンネル構造コピー ----------
+            for channel in guild_a.channels:
+                if isinstance(channel, discord.CategoryChannel):
+                    cat = await guild_b.create_category(name=channel.name)
+                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = cat.id
+                    a_conf["CHANNEL_MAPPING"][str(cat.id)] = channel.id
+                elif isinstance(channel, discord.TextChannel):
+                    category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
+                    cat = guild_b.get_channel(category_id) if category_id else None
+                    new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
+                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
+                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
+                elif isinstance(channel, discord.VoiceChannel):
+                    category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
+                    cat = guild_b.get_channel(category_id) if category_id else None
+                    new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
+                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
+                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
+
+            # B側更新をA側にも反映（双方向マッピング）
+            for b_src_id, b_dest_id in server_b_conf["CHANNEL_MAPPING"].items():
+                a_conf["CHANNEL_MAPPING"][str(b_dest_id)] = int(b_src_id)
+
+            self.save_config()
+            await ctx.send(f"✅ Aサーバー({guild_a.name}) と Bサーバー({guild_b.name}) のチャンネル同期完了")
+            await debug_ch.send("[DEBUG] チャンネルマッピング同期完了")
