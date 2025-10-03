@@ -10,25 +10,41 @@ class TransferCog(commands.Cog):
         self.config_manager = config_manager
         print("[DEBUG] TransferCog loaded")
 
-    async def send_debug(self, text: str):
-        """デバッグチャンネルにログを送信"""
+    async def send_debug(self, text: str, fallback_channel: discord.TextChannel = None):
+        """
+        デバッグ送信。
+        デバッグチャンネルが取得できなければ fallback_channel に送信。
+        """
+        await self.bot.wait_until_ready()
         debug_ch = self.bot.get_channel(DEBUG_CHANNEL_ID)
-        if debug_ch:
+        target_ch = debug_ch or fallback_channel
+
+        if target_ch:
             try:
-                await debug_ch.send(f"[DEBUG] {text}")
+                await target_ch.send(f"[DEBUG] {text}")
             except Exception as e:
                 print(f"[DEBUG ERROR] {e}")
+        else:
+            print(f"[DEBUG] 送信先チャンネルなし: {text}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
 
-        await self.send_debug(f"受信: {message.guild.name} ({message.guild.id}) | {message.channel.name} ({message.channel.id}) | {message.content}")
+        # 受信確認
+        await self.send_debug(
+            f"受信: {message.guild.name} ({message.guild.id}) | "
+            f"{message.channel.name} ({message.channel.id}) | {message.content}",
+            fallback_channel=message.channel
+        )
 
         server_conf = self.config_manager.get_server_config_by_message(message)
         if not server_conf:
-            await self.send_debug("サーバー設定が見つからなかった → commandsへ渡す")
+            await self.send_debug(
+                "サーバー設定が見つからなかった → commandsへ渡す",
+                fallback_channel=message.channel
+            )
             await self.bot.process_commands(message)
             return
 
@@ -37,33 +53,47 @@ class TransferCog(commands.Cog):
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
         if message.guild.id != server_a_id:
-            await self.send_debug("このサーバーはAじゃない → commandsへ渡す")
+            await self.send_debug(
+                "このサーバーはAじゃない → commandsへ渡す",
+                fallback_channel=message.channel
+            )
             await self.bot.process_commands(message)
             return
 
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
-            await self.send_debug("Bサーバーが見つからない")
+            await self.send_debug(
+                "Bサーバーが見つからない",
+                fallback_channel=message.channel
+            )
             await self.bot.process_commands(message)
             return
 
         dest_channel_id = channel_mapping.get(str(message.channel.id))
         if not dest_channel_id:
-            await self.send_debug(f"チャンネルマッピングが存在しない: {message.channel.id}")
+            await self.send_debug(
+                f"チャンネルマッピングが存在しない: {message.channel.id}",
+                fallback_channel=message.channel
+            )
             await self.bot.process_commands(message)
             return
 
         dest_channel = guild_b.get_channel(dest_channel_id)
         if not dest_channel:
-            await self.send_debug(f"転送先チャンネルが取得できない: {dest_channel_id}")
+            await self.send_debug(
+                f"転送先チャンネルが取得できない: {dest_channel_id}",
+                fallback_channel=message.channel
+            )
             await self.bot.process_commands(message)
             return
 
-        await self.send_debug(f"転送開始: {message.channel.id} → {dest_channel.id}")
+        await self.send_debug(
+            f"転送開始: {message.channel.id} → {dest_channel.id}",
+            fallback_channel=message.channel
+        )
 
         # Embed作成
-        description = message.content
-        embed = discord.Embed(description=description, color=discord.Color.blue())
+        embed = discord.Embed(description=message.content, color=discord.Color.blue())
         embed.set_author(
             name=message.author.display_name,
             icon_url=message.author.avatar.url if message.author.avatar else None
@@ -95,8 +125,14 @@ class TransferCog(commands.Cog):
             if mentions:
                 await dest_channel.send(" ".join(mentions))
 
-        await self.send_debug("転送完了")
+        await self.send_debug("転送完了", fallback_channel=message.channel)
         await self.bot.process_commands(message)
+
+    @commands.command(name="debug_test")
+    async def debug_test(self, ctx):
+        """デバッグ送信テスト用コマンド"""
+        await self.send_debug("⚡デバッグ送信テスト⚡", fallback_channel=ctx.channel)
+        await ctx.send("デバッグ送信を実行しました")
 
 
 async def setup(bot: commands.Bot):
