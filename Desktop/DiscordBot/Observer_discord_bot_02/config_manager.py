@@ -73,7 +73,7 @@ class ConfigManager:
             server = self.get_server_config(ctx.guild.id)
             if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(ctx.author.id)
-                server["SERVER_B_ID"] = ctx.guild.id  # Bサーバー固定
+                server["SERVER_B_ID"] = ctx.guild.id
                 self.save_config()
                 await ctx.send(
                     f"✅ 管理者として {ctx.author.display_name} を登録しました。\n"
@@ -101,35 +101,38 @@ class ConfigManager:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # ---------- Aサーバー側設定取得 ----------
+            # ---------- Bにチャンネル生成 & CHANNEL_MAPPING ----------
             a_conf = self.get_server_config(guild_a.id)
+            b_conf = server_b_conf
+            temp_mapping = {}  # 生成中のマッピングを一時保存
 
-            # ---------- チャンネル構造コピー ----------
             for channel in guild_a.channels:
                 if isinstance(channel, discord.CategoryChannel):
-                    cat = await guild_b.create_category(name=channel.name)
-                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = cat.id
-                    a_conf["CHANNEL_MAPPING"][str(cat.id)] = channel.id
+                    new_cat = await guild_b.create_category(name=channel.name)
+                    temp_mapping[str(channel.id)] = new_cat.id
                 elif isinstance(channel, discord.TextChannel):
-                    category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
-                    cat = guild_b.get_channel(category_id) if category_id else None
+                    cat_id = temp_mapping.get(str(channel.category_id))
+                    cat = guild_b.get_channel(cat_id) if cat_id else None
                     new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
-                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
+                    temp_mapping[str(channel.id)] = new_ch.id
                 elif isinstance(channel, discord.VoiceChannel):
-                    category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
-                    cat = guild_b.get_channel(category_id) if category_id else None
+                    cat_id = temp_mapping.get(str(channel.category_id))
+                    cat = guild_b.get_channel(cat_id) if cat_id else None
                     new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
-                    server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
+                    temp_mapping[str(channel.id)] = new_ch.id
 
-            # ---------- A/BサーバーIDを保存 ----------
+            # ---------- マッピングを保存 ----------
+            for a_id, b_id in temp_mapping.items():
+                b_conf["CHANNEL_MAPPING"][a_id] = b_id
+                a_conf["CHANNEL_MAPPING"][str(b_id)] = int(a_id)
+
+            # ---------- サーバーIDを両方に設定 ----------
+            b_conf["SERVER_A_ID"] = guild_a.id
+            b_conf["SERVER_B_ID"] = guild_b.id
             a_conf["SERVER_A_ID"] = guild_a.id
             a_conf["SERVER_B_ID"] = guild_b.id
-            server_b_conf["SERVER_A_ID"] = guild_a.id
-            server_b_conf["SERVER_B_ID"] = guild_b.id
 
-            # ---------- JSON保存 ----------
+            # ---------- 保存 ----------
             self.save_config()
 
             # ---------- 完了通知 ----------
