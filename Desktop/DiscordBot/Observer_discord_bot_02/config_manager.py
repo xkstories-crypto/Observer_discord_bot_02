@@ -92,10 +92,7 @@ class ConfigManager:
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            # ---------- Bサーバーに Aサーバーを紐付け ----------
-            server_b_conf["SERVER_A_ID"] = server_a_id
-            self.save_config()
-            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定しました。")
+            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定中…")
 
             # ---------- ギルド取得 ----------
             guild_a = bot.get_guild(server_a_id)
@@ -104,12 +101,10 @@ class ConfigManager:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # ---------- Aサーバー側の設定作成/更新 ----------
+            # ---------- Aサーバー側設定取得 ----------
             a_conf = self.get_server_config(guild_a.id)
-            a_conf["SERVER_A_ID"] = server_a_id  # A JSONでも保持
-            a_conf["SERVER_B_ID"] = server_b_id  # B JSONでも保持
 
-                        # ---------- チャンネル構造コピー（双方向マッピング） ----------
+            # ---------- チャンネル構造コピー ----------
             for channel in guild_a.channels:
                 if isinstance(channel, discord.CategoryChannel):
                     cat = await guild_b.create_category(name=channel.name)
@@ -128,7 +123,13 @@ class ConfigManager:
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
                     a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
 
-            # ---------- 保存 ----------
+            # ---------- A/BサーバーIDを保存 ----------
+            a_conf["SERVER_A_ID"] = guild_a.id
+            a_conf["SERVER_B_ID"] = guild_b.id
+            server_b_conf["SERVER_A_ID"] = guild_a.id
+            server_b_conf["SERVER_B_ID"] = guild_b.id
+
+            # ---------- JSON保存 ----------
             self.save_config()
 
             # ---------- 完了通知 ----------
