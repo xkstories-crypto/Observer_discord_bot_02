@@ -26,15 +26,11 @@ class ConfigManager:
 
     def save_config(self):
         with self._save_lock:
-            # backup
             try:
                 if os.path.exists(CONFIG_FILE):
                     bak_name = f"{CONFIG_FILE}.bak.{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
-                    try:
-                        os.replace(CONFIG_FILE, bak_name)
-                    except Exception:
-                        import shutil
-                        shutil.copy2(CONFIG_FILE, bak_name)
+                    import shutil
+                    shutil.copy2(CONFIG_FILE, bak_name)
             except Exception as e:
                 print(f"[SAVE] backup failed: {e}")
 
@@ -46,14 +42,6 @@ class ConfigManager:
                 print("[SAVE] config saved atomically")
             except Exception as e:
                 print(f"[SAVE] failed to write config: {e}")
-                try:
-                    backups = [p for p in os.listdir(".") if p.startswith(CONFIG_FILE + ".bak")]
-                    if backups:
-                        latest = sorted(backups)[-1]
-                        os.replace(latest, CONFIG_FILE)
-                        print("[SAVE] restored backup due to error")
-                except Exception as e2:
-                    print(f"[SAVE] failed to restore backup: {e2}")
 
     # ------------------------
     # サーバーごとの設定取得
@@ -114,7 +102,7 @@ class ConfigManager:
 
         # -------- !set_server --------
         @bot.command(name="set_server")
-        async def set_server(ctx: commands.Context, server_a_id: int, mode: str = None):
+        async def set_server(ctx: commands.Context, server_a_id: int):
             server_b_id = ctx.guild.id
             b_conf = self.get_server_config(server_b_id)
 
@@ -127,28 +115,30 @@ class ConfigManager:
             # ---------- ギルド取得 ----------
             guild_a = bot.get_guild(server_a_id)
             guild_b = bot.get_guild(server_b_id)
-            print(f"[DEBUG] get_guild: guild_a={guild_a} guild_b={guild_b}")
             if guild_a is None or guild_b is None:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # ---------- Bサーバーのチャンネル全削除（--resetオプション） ----------
-            if mode == "--reset":
-                await ctx.send("🗑️ 既存のチャンネルを削除しています...")
-                for channel in guild_b.channels:
-                    try:
-                        await channel.delete()
-                        await ctx.send(f"🗑️ 削除: {channel.name}")
-                    except Exception as e:
-                        await ctx.send(f"⚠️ 削除失敗: {channel.name} → {e}")
+            # =======================
+            # 今だけ全削除（あとで消す）
+            # =======================
+            await ctx.send("🗑️ Bサーバーの既存チャンネルを全削除中...")
+            for channel in guild_b.channels:
+                try:
+                    await channel.delete()
+                    await ctx.send(f"🗑️ 削除: {channel.name}")
+                except Exception as e:
+                    await ctx.send(f"⚠️ 削除失敗: {channel.name} → {e}")
+            # =======================
+            # 今だけ全削除ここまで
+            # =======================
 
-            # ---------- in-memoryでIDをセット ----------
+            # ---------- in-memoryでIDをセット（まだ保存しない） ----------
             a_conf = self.get_server_config(guild_a.id)
             b_conf["SERVER_A_ID"] = guild_a.id
             b_conf["SERVER_B_ID"] = guild_b.id
             a_conf["SERVER_A_ID"] = guild_a.id
             a_conf["SERVER_B_ID"] = guild_b.id
-            print("[DEBUG] A/B サーバーIDを in-memory に設定しました。")
 
             # ---------- Bにチャンネル生成（temp mapping） ----------
             temp_mapping = {}  # str(a_id) -> str(b_id)
@@ -161,7 +151,6 @@ class ConfigManager:
                     a_key = str(channel.id)
                     if a_key in b_conf.get("CHANNEL_MAPPING", {}):
                         skipped += 1
-                        print(f"[SKIP] mapping exists for A:{a_key} -> {b_conf['CHANNEL_MAPPING'][a_key]}")
                         continue
 
                     if isinstance(channel, discord.CategoryChannel):
@@ -169,7 +158,6 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_cat.id)
                         created += 1
                         await ctx.send(f"[作成] カテゴリ `{channel.name}` -> `{new_cat.id}`")
-                        print(f"[CREATE] Category {channel.name} -> {new_cat.id}")
 
                     elif isinstance(channel, discord.TextChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
@@ -178,7 +166,6 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_ch.id)
                         created += 1
                         await ctx.send(f"[作成] テキスト `{channel.name}` -> `{new_ch.id}`")
-                        print(f"[CREATE] TextChannel {channel.name} -> {new_ch.id}")
 
                     elif isinstance(channel, discord.VoiceChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
@@ -187,23 +174,15 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_ch.id)
                         created += 1
                         await ctx.send(f"[作成] ボイス `{channel.name}` -> `{new_ch.id}`")
-                        print(f"[CREATE] VoiceChannel {channel.name} -> {new_ch.id}")
 
                 except discord.Forbidden:
-                    msg = f"権限不足で `{channel.name}` の作成に失敗しました"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
+                    await ctx.send(f"⚠️ 権限不足で `{channel.name}` の作成に失敗しました")
                 except discord.HTTPException as e:
-                    msg = f"Discord API エラーで `{channel.name}` の作成に失敗: {e}"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
+                    await ctx.send(f"⚠️ Discord API エラーで `{channel.name}` の作成に失敗: {e}")
                 except Exception as e:
-                    msg = f"不明なエラーで `{channel.name}` の作成に失敗: {e}"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
-                    print(f"[ERROR] creating channel {channel.name}: {e}")
+                    await ctx.send(f"⚠️ 不明なエラーで `{channel.name}` の作成に失敗: {e}")
 
-            # ---------- マッピング保存 ----------
+            # ---------- マッピングを保存 ----------
             if "CHANNEL_MAPPING" not in b_conf:
                 b_conf["CHANNEL_MAPPING"] = {}
             if "CHANNEL_MAPPING" not in a_conf:
@@ -213,3 +192,9 @@ class ConfigManager:
                 b_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
                 a_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
 
+            # ---------- 最終保存 ----------
+            self.save_config()
+
+            # ---------- レポート ----------
+            report = f"✅ 完了: 作成 {created} 件、スキップ {skipped} 件、エラー {len(errors)} 件"
+            await ctx.send(report)
