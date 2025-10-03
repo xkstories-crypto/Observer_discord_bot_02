@@ -1,6 +1,3 @@
-# -------------------------
-# config_manager.py
-# -------------------------
 import discord
 from discord.ext import commands
 import json
@@ -76,11 +73,11 @@ class ConfigManager:
             server = self.get_server_config(ctx.guild.id)
             if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(ctx.author.id)
-                server["SERVER_B_ID"] = ctx.guild.id
+                server["SERVER_B_ID"] = ctx.guild.id  # Bサーバー固定
                 self.save_config()
                 await ctx.send(
-                    f"✅ 管理者登録完了: {ctx.author.display_name}\n"
-                    f"✅ このサーバーを SERVER_B_ID に設定しました"
+                    f"✅ 管理者として {ctx.author.display_name} を登録しました。\n"
+                    f"✅ このサーバー ({ctx.guild.id}) を SERVER_B_ID に設定しました。"
                 )
             else:
                 await ctx.send("すでに管理者が登録されています。")
@@ -95,46 +92,40 @@ class ConfigManager:
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            # B側にAを紐付け
+            # Bサーバーに Aサーバーを紐付け
             server_b_conf["SERVER_A_ID"] = server_a_id
+            self.save_config()
+            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定しました。")
 
-            # ギルド取得
+            # ---------- ギルド取得 ----------
             guild_a = bot.get_guild(server_a_id)
             guild_b = bot.get_guild(server_b_id)
             if guild_a is None or guild_b is None:
-                await ctx.send("⚠️ 両方のサーバーにBotが参加しているか確認してください")
+                await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # Aサーバー設定取得／作成
+            # Aサーバー側の設定も作成
             a_conf = self.get_server_config(guild_a.id)
             a_conf["SERVER_B_ID"] = guild_b.id
 
-            debug_ch = ctx.channel
-            await debug_ch.send(f"[DEBUG] Aサーバー({guild_a.id}) と Bサーバー({guild_b.id}) の同期開始")
-
-            # ---------- チャンネル構造コピー ----------
+            # ---------- チャンネル構造コピー（双方向マッピング） ----------
             for channel in guild_a.channels:
                 if isinstance(channel, discord.CategoryChannel):
                     cat = await guild_b.create_category(name=channel.name)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = cat.id
-                    a_conf["CHANNEL_MAPPING"][str(cat.id)] = channel.id
+                    a_conf["CHANNEL_MAPPING"][str(cat.id)] = channel.id  # A側にも保存
                 elif isinstance(channel, discord.TextChannel):
                     category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
                     cat = guild_b.get_channel(category_id) if category_id else None
                     new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
+                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id  # A側にも保存
                 elif isinstance(channel, discord.VoiceChannel):
                     category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
                     cat = guild_b.get_channel(category_id) if category_id else None
                     new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
-
-            # B側更新をA側にも反映（双方向マッピング）
-            for b_src_id, b_dest_id in server_b_conf["CHANNEL_MAPPING"].items():
-                a_conf["CHANNEL_MAPPING"][str(b_dest_id)] = int(b_src_id)
+                    a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id  # A側にも保存
 
             self.save_config()
-            await ctx.send(f"✅ Aサーバー({guild_a.name}) と Bサーバー({guild_b.name}) のチャンネル同期完了")
-            await debug_ch.send("[DEBUG] チャンネルマッピング同期完了")
+            await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーし、設定を双方向で同期しました。")
