@@ -25,13 +25,8 @@ class ConfigManager:
             self.config = {"servers": {}}
 
     def save_config(self):
-        """
-        安全に保存する：
-         - 古いファイルを .bak.TIMESTAMP にコピー（任意）
-         - 一時ファイルに書き込み -> os.replace で原子置換
-        """
         with self._save_lock:
-            # make backup
+            # backup
             try:
                 if os.path.exists(CONFIG_FILE):
                     bak_name = f"{CONFIG_FILE}.bak.{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
@@ -119,7 +114,7 @@ class ConfigManager:
 
         # -------- !set_server --------
         @bot.command(name="set_server")
-        async def set_server(ctx: commands.Context, server_a_id: int):
+        async def set_server(ctx: commands.Context, server_a_id: int, mode: str = None):
             server_b_id = ctx.guild.id
             b_conf = self.get_server_config(server_b_id)
 
@@ -137,16 +132,26 @@ class ConfigManager:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
+            # ---------- Bサーバーのチャンネル全削除（--resetオプション） ----------
+            if mode == "--reset":
+                await ctx.send("🗑️ 既存のチャンネルを削除しています...")
+                for channel in guild_b.channels:
+                    try:
+                        await channel.delete()
+                        await ctx.send(f"🗑️ 削除: {channel.name}")
+                    except Exception as e:
+                        await ctx.send(f"⚠️ 削除失敗: {channel.name} → {e}")
+
             # ---------- in-memoryでIDをセット ----------
             a_conf = self.get_server_config(guild_a.id)
             b_conf["SERVER_A_ID"] = guild_a.id
             b_conf["SERVER_B_ID"] = guild_b.id
             a_conf["SERVER_A_ID"] = guild_a.id
             a_conf["SERVER_B_ID"] = guild_b.id
-            await ctx.send(f"[DEBUG] A/B サーバーIDを in-memory に設定しました。")
+            print("[DEBUG] A/B サーバーIDを in-memory に設定しました。")
 
-            # ---------- Bにチャンネル生成 ----------
-            temp_mapping = {}
+            # ---------- Bにチャンネル生成（temp mapping） ----------
+            temp_mapping = {}  # str(a_id) -> str(b_id)
             created = 0
             skipped = 0
             errors = []
@@ -156,7 +161,7 @@ class ConfigManager:
                     a_key = str(channel.id)
                     if a_key in b_conf.get("CHANNEL_MAPPING", {}):
                         skipped += 1
-                        await ctx.send(f"[SKIP] 既存マッピングあり: {channel.name}")
+                        print(f"[SKIP] mapping exists for A:{a_key} -> {b_conf['CHANNEL_MAPPING'][a_key]}")
                         continue
 
                     if isinstance(channel, discord.CategoryChannel):
@@ -164,6 +169,7 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_cat.id)
                         created += 1
                         await ctx.send(f"[作成] カテゴリ `{channel.name}` -> `{new_cat.id}`")
+                        print(f"[CREATE] Category {channel.name} -> {new_cat.id}")
 
                     elif isinstance(channel, discord.TextChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
@@ -172,6 +178,7 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_ch.id)
                         created += 1
                         await ctx.send(f"[作成] テキスト `{channel.name}` -> `{new_ch.id}`")
+                        print(f"[CREATE] TextChannel {channel.name} -> {new_ch.id}")
 
                     elif isinstance(channel, discord.VoiceChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
@@ -180,6 +187,7 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_ch.id)
                         created += 1
                         await ctx.send(f"[作成] ボイス `{channel.name}` -> `{new_ch.id}`")
+                        print(f"[CREATE] VoiceChannel {channel.name} -> {new_ch.id}")
 
                 except discord.Forbidden:
                     msg = f"権限不足で `{channel.name}` の作成に失敗しました"
@@ -205,13 +213,3 @@ class ConfigManager:
                 b_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
                 a_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
 
-            # ---------- 保存 ----------
-            self.save_config()
-            await ctx.send(f"[DEBUG] 設定ファイル保存完了。")
-
-            # ---------- レポート ----------
-            report = f"✅ 完了: 作成 {created} 件、スキップ {skipped} 件、エラー {len(errors)} 件"
-            await ctx.send(report)
-            if errors:
-                await ctx.send("⚠️ エラー詳細はコンソールを確認してください。")
-            print(f"[REPORT] {report}")
