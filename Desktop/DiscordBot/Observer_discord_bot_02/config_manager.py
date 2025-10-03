@@ -92,7 +92,7 @@ class ConfigManager:
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            # Bサーバーに Aサーバーを紐付け
+            # ---------- Bサーバーに Aサーバーを紐付け ----------
             server_b_conf["SERVER_A_ID"] = server_a_id
             self.save_config()
             await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定しました。")
@@ -106,29 +106,27 @@ class ConfigManager:
 
             # ---------- Aサーバー側の設定作成/更新 ----------
             a_conf = self.get_server_config(guild_a.id)
-            a_conf["SERVER_B_ID"] = guild_b.id
+            a_conf["SERVER_A_ID"] = server_a_id  # A JSONでも保持
+            a_conf["SERVER_B_ID"] = server_b_id  # B JSONでも保持
 
-            # ---------- チャンネル構造コピー（A→Bのみ） ----------
+            # ---------- チャンネル構造コピー（A → B のみ） ----------
             for channel in guild_a.channels:
                 if isinstance(channel, discord.CategoryChannel):
                     cat = await guild_b.create_category(name=channel.name)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = cat.id
-                    a_conf["CHANNEL_MAPPING"][str(channel.id)] = cat.id  # A JSONにも保存
                 elif isinstance(channel, discord.TextChannel):
                     category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
                     cat = guild_b.get_channel(category_id) if category_id else None
                     new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id  # A JSONにも保存
                 elif isinstance(channel, discord.VoiceChannel):
                     category_id = server_b_conf["CHANNEL_MAPPING"].get(str(channel.category_id))
                     cat = guild_b.get_channel(category_id) if category_id else None
                     new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
-                    a_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id  # A JSONにも保存
 
             # ---------- 保存 ----------
             self.save_config()
 
             # ---------- 完了通知 ----------
-            await ctx.send(f"✅ Aサーバー ({guild_a.name}) と Bサーバー ({guild_b.name}) のチャンネルマッピングを同期しました。")
+            await ctx.send(f"✅ Aサーバー ({guild_a.name}) → Bサーバー ({guild_b.name}) のチャンネルコピー完了、JSONも同期しました。")
