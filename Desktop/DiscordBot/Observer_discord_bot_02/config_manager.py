@@ -127,12 +127,5 @@ class ConfigManager:
                     server_b_conf["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
                     a_conf["CHANNEL_MAPPING"][str(new_ch.id)] = channel.id
 
-            # ---------- B側更新をA側に反映（明示的上書き） ----------
-            for b_src_id, b_dest_id in server_b_conf["CHANNEL_MAPPING"].items():
-                a_conf["CHANNEL_MAPPING"][str(b_dest_id)] = int(b_src_id)
-
-            # ---------- 保存 ----------
-            self.save_config()
-
             # ---------- 完了通知 ----------
             await ctx.send(f"✅ Aサーバー ({guild_a.name}) と Bサーバー ({guild_b.name}) のチャンネルマッピングを同期しました。")
