@@ -119,20 +119,6 @@ class ConfigManager:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # =======================
-            # 今だけ全削除（あとで消す）
-            # =======================
-            await ctx.send("🗑️ Bサーバーの既存チャンネルを全削除中...")
-            for channel in guild_b.channels:
-                try:
-                    await channel.delete()
-                    await ctx.send(f"🗑️ 削除: {channel.name}")
-                except Exception as e:
-                    await ctx.send(f"⚠️ 削除失敗: {channel.name} → {e}")
-            # =======================
-            # 今だけ全削除ここまで
-            # =======================
-
             # ---------- in-memoryでIDをセット（まだ保存しない） ----------
             a_conf = self.get_server_config(guild_a.id)
             b_conf["SERVER_A_ID"] = guild_a.id
