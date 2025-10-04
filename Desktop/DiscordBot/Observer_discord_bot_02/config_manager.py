@@ -97,19 +97,19 @@ class ConfigManager:
                 if isinstance(channel, discord.CategoryChannel):
                     new_cat = await guild_b.create_category(name=channel.name)
                     temp_mapping[channel.id] = new_cat.id
-                    print(f"[DEBUG] カテゴリ生成: {channel.name} ({channel.id}) → {new_cat.name} ({new_cat.id})")
+                    await ctx.send(f"[DEBUG] カテゴリ生成: {channel.name} ({channel.id}) → {new_cat.name} ({new_cat.id})")
                 elif isinstance(channel, discord.TextChannel):
                     cat_id = temp_mapping.get(channel.category_id)
                     cat = guild_b.get_channel(cat_id) if cat_id else None
                     new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
                     temp_mapping[channel.id] = new_ch.id
-                    print(f"[DEBUG] テキスト生成: {channel.name} ({channel.id}) → {new_ch.name} ({new_ch.id})")
+                    await ctx.send(f"[DEBUG] テキスト生成: {channel.name} ({channel.id}) → {new_ch.name} ({new_ch.id})")
                 elif isinstance(channel, discord.VoiceChannel):
                     cat_id = temp_mapping.get(channel.category_id)
                     cat = guild_b.get_channel(cat_id) if cat_id else None
                     new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
                     temp_mapping[channel.id] = new_ch.id
-                    print(f"[DEBUG] ボイス生成: {channel.name} ({channel.id}) → {new_ch.name} ({new_ch.id})")
+                    await ctx.send(f"[DEBUG] ボイス生成: {channel.name} ({channel.id}) → {new_ch.name} ({new_ch.id})")
 
             # ---------- マッピングを両方に保存 ----------
             for a_id, b_id in temp_mapping.items():
