@@ -9,7 +9,7 @@ class TransferCog(commands.Cog):
         print("[DEBUG] TransferCog loaded")
 
     async def send_debug(self, text: str, fallback_channel: discord.TextChannel):
-        """その場でデバッグ表示"""
+        """Discord に必ずデバッグ出力"""
         await self.bot.wait_until_ready()
         try:
             await fallback_channel.send(f"[DEBUG] {text}")
@@ -18,16 +18,20 @@ class TransferCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        # Bot のメッセージは無視
         if message.author.bot or not message.guild:
             return
 
-        # デバッグ表示（必ずそのチャンネルに返す）
+        # まず最初に Discord に受信情報を出力
         await self.send_debug(
-            f"受信: {message.guild.name} ({message.guild.id}) | {message.channel.name} ({message.channel.id}) | {message.content}",
+            f"受信: guild={message.guild.name} ({message.guild.id}), "
+            f"channel={message.channel.name} ({message.channel.id}), "
+            f"author={message.author.display_name} ({message.author.id}), "
+            f"content={message.content}",
             fallback_channel=message.channel
         )
 
-        # 設定取得
+        # サーバー設定取得
         server_conf = self.config_manager.get_server_config_by_message(message)
         if not server_conf:
             await self.send_debug("サーバー設定が見つからなかった → commandsへ渡す", fallback_channel=message.channel)
@@ -38,13 +42,15 @@ class TransferCog(commands.Cog):
         server_b_id = server_conf.get("SERVER_B_ID")
         channel_mapping = server_conf.get("CHANNEL_MAPPING", {})
 
-        # サーバーA以外は無視
+        await self.send_debug(f"server_a_id={server_a_id}, server_b_id={server_b_id}", fallback_channel=message.channel)
+
+        # Aサーバー以外は無視
         if message.guild.id != server_a_id:
             await self.send_debug("このサーバーはAじゃない → commandsへ渡す", fallback_channel=message.channel)
             await self.bot.process_commands(message)
             return
 
-        # サーバーB取得
+        # Bサーバー取得
         guild_b = self.bot.get_guild(server_b_id)
         if not guild_b:
             await self.send_debug("Bサーバーが見つからない", fallback_channel=message.channel)
@@ -64,13 +70,14 @@ class TransferCog(commands.Cog):
             await self.bot.process_commands(message)
             return
 
-        # 転送（テキストのみ）
+        # 転送処理
         try:
             await dest_channel.send(f"[転送] {message.author.display_name}: {message.content}")
             await self.send_debug(f"転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
 
+        # commands 処理も継続
         await self.bot.process_commands(message)
 
     @commands.command(name="debug_test")
