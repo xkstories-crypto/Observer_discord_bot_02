@@ -26,6 +26,7 @@ class ConfigManager:
 
     def save_config(self):
         with self._save_lock:
+            # バックアップ
             try:
                 if os.path.exists(CONFIG_FILE):
                     bak_name = f"{CONFIG_FILE}.bak.{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
@@ -70,19 +71,6 @@ class ConfigManager:
         return user_id in server["ADMIN_IDS"]
 
     # ------------------------
-    # メッセージベースでサーバー設定を取得
-    # ------------------------
-    def get_server_config_by_message(self, message: discord.Message):
-        guild_id = message.guild.id
-        conf = self.config["servers"].get(str(guild_id))
-        if conf:
-            return conf
-        for s_conf in self.config["servers"].values():
-            if s_conf.get("SERVER_A_ID") == guild_id:
-                return s_conf
-        return None
-
-    # ------------------------
     # コマンド登録
     # ------------------------
     def register_commands(self):
@@ -113,8 +101,9 @@ class ConfigManager:
                 await ctx.send("管理者のみ使用可能です。")
                 return
 
-            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定中… (詳細はこのチャンネルに表示します)")
+            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定中… (作成状況も表示します)")
 
+            # ---------- ギルド取得 ----------
             guild_a = bot.get_guild(server_a_id)
             guild_b = bot.get_guild(server_b_id)
             if guild_a is None or guild_b is None:
@@ -127,6 +116,7 @@ class ConfigManager:
             a_conf["SERVER_A_ID"] = guild_a.id
             a_conf["SERVER_B_ID"] = guild_b.id
 
+            # ---------- Bにチャンネル生成 ----------
             temp_mapping = {}  # str(a_id) -> str(b_id)
             created = 0
             skipped = 0
@@ -137,47 +127,31 @@ class ConfigManager:
                     a_key = str(channel.id)
                     if a_key in b_conf.get("CHANNEL_MAPPING", {}):
                         skipped += 1
-                        continue
-
-                    # 鍵部屋（admin-only）は作らない
-                    if channel.name.startswith("🔒"):
-                        await ctx.send(f"[SKIP] 鍵部屋 {channel.name} をスキップ")
-                        skipped += 1
+                        await ctx.send(f"[SKIP] 既存マッピング: {a_key}")
                         continue
 
                     if isinstance(channel, discord.CategoryChannel):
                         new_cat = await guild_b.create_category(name=channel.name)
                         temp_mapping[a_key] = str(new_cat.id)
-                        created += 1
                         await ctx.send(f"[作成] カテゴリ `{channel.name}` -> `{new_cat.id}`")
                     elif isinstance(channel, discord.TextChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
-                        cat = guild_b.get_channel(int(cat_id)) if cat_id else None
+                        cat = await guild_b.fetch_channel(int(cat_id)) if cat_id else None
                         new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
                         temp_mapping[a_key] = str(new_ch.id)
-                        created += 1
                         await ctx.send(f"[作成] テキスト `{channel.name}` -> `{new_ch.id}`")
                     elif isinstance(channel, discord.VoiceChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
-                        cat = guild_b.get_channel(int(cat_id)) if cat_id else None
+                        cat = await guild_b.fetch_channel(int(cat_id)) if cat_id else None
                         new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
                         temp_mapping[a_key] = str(new_ch.id)
-                        created += 1
                         await ctx.send(f"[作成] ボイス `{channel.name}` -> `{new_ch.id}`")
 
-                except discord.Forbidden:
-                    msg = f"権限不足で `{channel.name}` の作成に失敗しました"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
-                except discord.HTTPException as e:
-                    msg = f"Discord API エラーで `{channel.name}` の作成に失敗: {e}"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
+                    created += 1
+
                 except Exception as e:
-                    msg = f"不明なエラーで `{channel.name}` の作成に失敗: {e}"
-                    errors.append(msg)
-                    await ctx.send(f"⚠️ {msg}")
-                    print(f"[ERROR] creating channel {channel.name}: {e}")
+                    errors.append(f"{channel.name}: {e}")
+                    await ctx.send(f"⚠️ チャンネル `{channel.name}` 作成失敗: {e}")
 
             # ---------- マッピング保存 ----------
             if "CHANNEL_MAPPING" not in b_conf:
@@ -191,7 +165,8 @@ class ConfigManager:
 
             self.save_config()
 
+            # ---------- レポート ----------
             report = f"✅ 完了: 作成 {created} 件、スキップ {skipped} 件、エラー {len(errors)} 件"
             await ctx.send(report)
             if errors:
-                await ctx.send("エラー詳細はコンソールを確認してください。")
+                await ctx.send("⚠️ エラー詳細はコンソールで確認してください。")
