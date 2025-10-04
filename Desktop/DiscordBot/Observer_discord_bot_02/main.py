@@ -41,27 +41,43 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ---------- ConfigManager ----------
-config_manager = ConfigManager(bot)
+config_manager = ConfigManager()
 bot.config_manager = config_manager  # Cog で使用できるように属性追加
 
 # ---------- 一時確認コマンド（管理者限定） ----------
 @bot.command(name="show_config")
 async def show_config(ctx):
-    # 管理者だけ許可
-    server_conf = bot.config_manager.get_server_config(ctx.guild.id)
-    admin_ids = server_conf.get("ADMIN_IDS", [])
-    if ctx.author.id not in admin_ids:
+    # サーバーIDでペアを検索
+    pair = None
+    for p in bot.config_manager.pairs:  # pairs 属性にすべてのペアを保持している想定
+        if ctx.guild.id in (p["A_ID"], p["B_ID"]):
+            pair = p
+            break
+
+    if not pair:
+        await ctx.send("⚠️ このサーバーはペア設定されていません。")
+        return
+
+    # 管理者チェック
+    if ctx.author.id not in pair.get("ADMIN_IDS", []):
         await ctx.send("❌ 管理者のみ使用可能です。")
         return
 
-    try:
-        with open("config_data.json", "r", encoding="utf-8") as f:
-            data = f.read()
-        if len(data) > 1900:
-            data = data[:1900] + "..."
-        await ctx.send(f"```json\n{data}\n```")
-    except Exception as e:
-        await ctx.send(f"エラー: {e}")
+    # JSON 出力（チャンネルマッピングも表示）
+    lines = []
+    lines.append(f"Pair: A={pair['A_ID']}, B={pair['B_ID']}")
+    lines.append("CHANNEL_MAPPING:")
+    for direction, mapping in pair["CHANNEL_MAPPING"].items():
+        lines.append(f"  {direction}:")
+        for src, dest in mapping.items():
+            lines.append(f"    {src} -> {dest}")
+
+    lines.append("ADMIN_IDS:")
+    for admin_id in pair.get("ADMIN_IDS", []):
+        user = bot.get_user(admin_id)
+        lines.append(f"  {admin_id} -> {user.name if user else 'ユーザー不在'}")
+
+    await ctx.send("```\n" + "\n".join(lines) + "\n```")
 
 # ---------- Cog のロード ----------
 async def main():
