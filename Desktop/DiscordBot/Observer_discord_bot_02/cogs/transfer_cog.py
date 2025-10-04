@@ -1,14 +1,15 @@
+# transfer_cog.py
 from discord.ext import commands
 import discord
-from config_manager import ConfigManager
 
 class TransferCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
+    def __init__(self, bot: commands.Bot, config_manager):
         self.bot = bot
         self.config_manager = config_manager
-        print("[DEBUG] TransferCog (A→B only) loaded")
+        print("[DEBUG] TransferCog loaded")
 
     async def send_debug(self, text: str, fallback_channel: discord.TextChannel):
+        await self.bot.wait_until_ready()
         try:
             await fallback_channel.send(f"[DEBUG] {text}")
         except Exception as e:
@@ -20,46 +21,38 @@ class TransferCog(commands.Cog):
             return
 
         await self.send_debug(
-            f"受信: {message.guild.name} ({message.guild.id}) | {message.channel.name} ({message.channel.id}) | {message.content}",
+            f"受信: guild={message.guild.name} ({message.guild.id}), channel={message.channel.name} ({message.channel.id}), author={message.author.display_name}, content={message.content}",
             fallback_channel=message.channel
         )
 
-        # Aサーバー設定を取得
-        config = self.config_manager.get_server_config(message.guild.id)
-        if not config:
-            await self.send_debug("このサーバーはAサーバーとして登録されていません", message.channel)
+        pair = self.config_manager.get_pair_by_a(message.guild.id)
+        if not pair:
+            await self.bot.process_commands(message)
             return
 
-        dest_guild_id = config.get("DEST_SERVER_ID")
-        mapping = config.get("CHANNEL_MAPPING", {})
-
-        dest_channel_id = mapping.get(str(message.channel.id))
-        if not dest_channel_id:
-            await self.send_debug("このチャンネルは転送対象ではありません", message.channel)
+        dest_id = pair["CHANNEL_MAPPING"]["A_TO_B"].get(str(message.channel.id))
+        if not dest_id:
+            await self.bot.process_commands(message)
             return
 
-        dest_guild = self.bot.get_guild(dest_guild_id)
-        if not dest_guild:
-            await self.send_debug("転送先サーバーが見つかりません", message.channel)
-            return
-
-        dest_channel = dest_guild.get_channel(dest_channel_id)
+        dest_guild = self.bot.get_guild(pair["B_ID"])
+        dest_channel = dest_guild.get_channel(dest_id)
         if not dest_channel:
-            await self.send_debug(f"転送先チャンネルが見つからない: {dest_channel_id}", message.channel)
+            await self.bot.process_commands(message)
             return
 
-        # 転送
         try:
             await dest_channel.send(f"[転送] {message.author.display_name}: {message.content}")
-            await self.send_debug(f"転送成功: {message.channel.name} → {dest_channel.name}", message.channel)
+            await self.send_debug(f"転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
         except Exception as e:
-            await self.send_debug(f"転送失敗: {e}", message.channel)
+            await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
+
+        await self.bot.process_commands(message)
 
     @commands.command(name="debug_test")
     async def debug_test(self, ctx):
-        await self.send_debug("⚡デバッグ送信テスト⚡", ctx.channel)
+        await self.send_debug("⚡デバッグ送信テスト⚡", fallback_channel=ctx.channel)
         await ctx.send("デバッグ送信を実行しました")
-
 
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
