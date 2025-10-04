@@ -195,25 +195,3 @@ class ConfigManager:
             await ctx.send(report)
             if errors:
                 await ctx.send("エラー詳細はコンソールを確認してください。")
-
-        # -------- !check --------
-        @bot.command(name="check")
-        async def check(ctx: commands.Context):
-            server = self.get_server_config(ctx.guild.id)
-            guild = ctx.guild
-            await ctx.send(f"Server ({guild.id}): {guild.name}")
-            await ctx.send(f"SERVER_A_ID: {server.get('SERVER_A_ID')}")
-            await ctx.send(f"SERVER_B_ID: {server.get('SERVER_B_ID')}")
-            await ctx.send("CHANNEL_MAPPING:")
-            for a_id, b_id in server.get("CHANNEL_MAPPING", {}).items():
-                src_ch = bot.get_guild(server["SERVER_A_ID"]).get_channel(int(a_id)) if server.get("SERVER_A_ID") else None
-                dest_ch = bot.get_guild(server["SERVER_B_ID"]).get_channel(int(b_id)) if server.get("SERVER_B_ID") else None
-                src_name = src_ch.name if src_ch else "不明"
-                dest_name = dest_ch.name if dest_ch else "不明"
-                await ctx.send(f"  {a_id} -> {b_id} | src_name: {src_name}, dest_name: {dest_name}")
-            await ctx.send(f"READ_GROUPS: {server.get('READ_GROUPS')}")
-            await ctx.send(f"ADMIN_IDS: {server.get('ADMIN_IDS')}")
-            await ctx.send(f"VC_LOG_CHANNEL: {server.get('VC_LOG_CHANNEL') or '不明'}")
-            await ctx.send(f"AUDIT_LOG_CHANNEL: {server.get('AUDIT_LOG_CHANNEL') or '不明'}")
-            await ctx.send(f"OTHER_CHANNEL: {server.get('OTHER_CHANNEL') or '不明'}")
-            await ctx.send(f"READ_USERS: {server.get('READ_USERS')}")
