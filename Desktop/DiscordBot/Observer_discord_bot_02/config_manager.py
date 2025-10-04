@@ -15,7 +15,7 @@ class ConfigManager:
         self.register_commands()
 
     # ------------------------
-    # 設定ロード/保存（バックアップ＆原子書き込み）
+    # 設定ロード/保存（原子書き込み＋バックアップ）
     # ------------------------
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -92,24 +92,13 @@ class ConfigManager:
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             server = self.get_server_config(ctx.guild.id)
-            if ctx.author.id not in server["ADMIN_IDS"]:
+            if len(server["ADMIN_IDS"]) == 0:
                 server["ADMIN_IDS"].append(ctx.author.id)
                 server["SERVER_B_ID"] = ctx.guild.id
                 self.save_config()
-
-                # 鍵部屋作成
-                overwrites = {
-                    ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                    ctx.author: discord.PermissionOverwrite(read_messages=True)
-                }
-                key_channel = await ctx.guild.create_text_channel(
-                    name=f"鍵部屋-{ctx.author.display_name}",
-                    overwrites=overwrites
-                )
-
                 await ctx.send(
                     f"✅ 管理者として {ctx.author.display_name} を登録しました。\n"
-                    f"✅ このサーバーに鍵部屋 `{key_channel.name}` を作成しました。"
+                    f"✅ このサーバー ({ctx.guild.id}) を SERVER_B_ID に設定しました。"
                 )
             else:
                 await ctx.send("すでに管理者が登録されています。")
@@ -126,24 +115,17 @@ class ConfigManager:
 
             await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定中… (詳細はこのチャンネルに表示します)")
 
-            # ---------- ギルド取得 ----------
             guild_a = bot.get_guild(server_a_id)
             guild_b = bot.get_guild(server_b_id)
-            print(f"[DEBUG] get_guild: guild_a={guild_a} guild_b={guild_b}")
             if guild_a is None or guild_b is None:
                 await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
                 return
 
-            # ---------- in-memoryでIDをセット ----------
             a_conf = self.get_server_config(guild_a.id)
             b_conf["SERVER_A_ID"] = guild_a.id
             b_conf["SERVER_B_ID"] = guild_b.id
             a_conf["SERVER_A_ID"] = guild_a.id
             a_conf["SERVER_B_ID"] = guild_b.id
-            print("[DEBUG] A/B サーバーIDを in-memory に設定しました。")
-
-            # ---------- Bにチャンネル生成（鍵部屋除外） ----------
-            key_channels_ids = [ch.id for ch in guild_b.channels if "鍵部屋" in ch.name]
 
             temp_mapping = {}  # str(a_id) -> str(b_id)
             created = 0
@@ -152,14 +134,14 @@ class ConfigManager:
 
             for channel in guild_a.channels:
                 try:
-                    # skip if already mapped
                     a_key = str(channel.id)
                     if a_key in b_conf.get("CHANNEL_MAPPING", {}):
                         skipped += 1
                         continue
 
-                    # skip if the channel would overwrite a鍵部屋
-                    if channel.id in key_channels_ids:
+                    # 鍵部屋（admin-only）は作らない
+                    if channel.name.startswith("🔒"):
+                        await ctx.send(f"[SKIP] 鍵部屋 {channel.name} をスキップ")
                         skipped += 1
                         continue
 
@@ -168,7 +150,6 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_cat.id)
                         created += 1
                         await ctx.send(f"[作成] カテゴリ `{channel.name}` -> `{new_cat.id}`")
-
                     elif isinstance(channel, discord.TextChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
                         cat = guild_b.get_channel(int(cat_id)) if cat_id else None
@@ -176,7 +157,6 @@ class ConfigManager:
                         temp_mapping[a_key] = str(new_ch.id)
                         created += 1
                         await ctx.send(f"[作成] テキスト `{channel.name}` -> `{new_ch.id}`")
-
                     elif isinstance(channel, discord.VoiceChannel):
                         cat_id = temp_mapping.get(str(channel.category_id))
                         cat = guild_b.get_channel(int(cat_id)) if cat_id else None
@@ -199,7 +179,7 @@ class ConfigManager:
                     await ctx.send(f"⚠️ {msg}")
                     print(f"[ERROR] creating channel {channel.name}: {e}")
 
-            # ---------- マッピングを保存 ----------
+            # ---------- マッピング保存 ----------
             if "CHANNEL_MAPPING" not in b_conf:
                 b_conf["CHANNEL_MAPPING"] = {}
             if "CHANNEL_MAPPING" not in a_conf:
@@ -209,12 +189,31 @@ class ConfigManager:
                 b_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
                 a_conf["CHANNEL_MAPPING"][str(a_id)] = str(b_id)
 
-            # ---------- 保存 ----------
             self.save_config()
 
-            # ---------- レポート ----------
             report = f"✅ 完了: 作成 {created} 件、スキップ {skipped} 件、エラー {len(errors)} 件"
             await ctx.send(report)
             if errors:
                 await ctx.send("エラー詳細はコンソールを確認してください。")
-            print(f"[REPORT] {report}")
+
+        # -------- !check --------
+        @bot.command(name="check")
+        async def check(ctx: commands.Context):
+            server = self.get_server_config(ctx.guild.id)
+            guild = ctx.guild
+            await ctx.send(f"Server ({guild.id}): {guild.name}")
+            await ctx.send(f"SERVER_A_ID: {server.get('SERVER_A_ID')}")
+            await ctx.send(f"SERVER_B_ID: {server.get('SERVER_B_ID')}")
+            await ctx.send("CHANNEL_MAPPING:")
+            for a_id, b_id in server.get("CHANNEL_MAPPING", {}).items():
+                src_ch = bot.get_guild(server["SERVER_A_ID"]).get_channel(int(a_id)) if server.get("SERVER_A_ID") else None
+                dest_ch = bot.get_guild(server["SERVER_B_ID"]).get_channel(int(b_id)) if server.get("SERVER_B_ID") else None
+                src_name = src_ch.name if src_ch else "不明"
+                dest_name = dest_ch.name if dest_ch else "不明"
+                await ctx.send(f"  {a_id} -> {b_id} | src_name: {src_name}, dest_name: {dest_name}")
+            await ctx.send(f"READ_GROUPS: {server.get('READ_GROUPS')}")
+            await ctx.send(f"ADMIN_IDS: {server.get('ADMIN_IDS')}")
+            await ctx.send(f"VC_LOG_CHANNEL: {server.get('VC_LOG_CHANNEL') or '不明'}")
+            await ctx.send(f"AUDIT_LOG_CHANNEL: {server.get('AUDIT_LOG_CHANNEL') or '不明'}")
+            await ctx.send(f"OTHER_CHANNEL: {server.get('OTHER_CHANNEL') or '不明'}")
+            await ctx.send(f"READ_USERS: {server.get('READ_USERS')}")
