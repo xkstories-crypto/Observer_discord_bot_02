@@ -47,24 +47,6 @@ async def main():
         config_manager = ConfigManager(bot)
         bot.config_manager = config_manager  # Cog で使用できるように属性追加
 
-        # ---------- 一時確認コマンド（管理者限定） ----------
-        @bot.command(name="show_config")
-        async def show_config(ctx):
-            server_conf = bot.config_manager.get_server_config(ctx.guild.id)
-            admin_ids = server_conf.get("ADMIN_IDS", [])
-            if ctx.author.id not in admin_ids:
-                await ctx.send("❌ 管理者のみ使用可能です。")
-                return
-
-            try:
-                with open("config_data.json", "r", encoding="utf-8") as f:
-                    data = f.read()
-                if len(data) > 1900:
-                    data = data[:1900] + "..."
-                await ctx.send(f"```json\n{data}\n```")
-            except Exception as e:
-                await ctx.send(f"エラー: {e}")
-
         # ---------- Cog のロード ----------
         cogs = [
             "cogs.transfer_cog",
