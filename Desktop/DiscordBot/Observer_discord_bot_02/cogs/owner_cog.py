@@ -13,26 +13,29 @@ class OwnerCog(commands.Cog):
         self.config_manager = config_manager
 
     # ---------- 管理者チェック ----------
-    def admin_only(self):
-        async def predicate(ctx):
-            conf = self.config_manager.get_server_config(ctx.guild.id)
-            return ctx.author.id in conf.get("ADMIN_IDS", [])
-        return commands.check(predicate)
+    def is_admin(self, ctx):
+        conf = self.config_manager.get_server_config(ctx.guild.id)
+        return ctx.author.id in conf.get("ADMIN_IDS", [])
 
     # ---------- Bot停止 ----------
     @commands.command()
-    @commands.check(admin_only)
     async def stopbot(self, ctx):
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
         await ctx.send(f"[DEBUG] stopbot 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
         await ctx.send("🛑 Bot を停止します…")
         await self.bot.close()
 
     # ---------- サーバー設定表示 ----------
     @commands.command(name="show_config")
-    @commands.check(admin_only)
     async def show_config(self, ctx):
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] show_config 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}, conf_keys={list(conf.keys())}")
+        await ctx.send(f"[DEBUG] show_config 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
 
         try:
             data_str = json.dumps(conf, indent=2, ensure_ascii=False)
@@ -44,8 +47,11 @@ class OwnerCog(commands.Cog):
 
     # ---------- チャンネル情報再取得 ----------
     @commands.command()
-    @commands.check(admin_only)
     async def reload(self, ctx):
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
         await ctx.send(f"[DEBUG] reload 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
 
@@ -69,8 +75,11 @@ class OwnerCog(commands.Cog):
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
-    @commands.check(admin_only)
     async def check(self, ctx):
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
         await ctx.send(f"[DEBUG] check 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
 
@@ -95,10 +104,13 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット保存 ----------
     @commands.command()
-    @commands.check(admin_only)
     async def save_preset(self, ctx, preset_name: str):
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] save_preset 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}, preset_name={preset_name}")
+        await ctx.send(f"[DEBUG] save_preset 呼び出し: {preset_name} by {ctx.author}")
 
         presets = {}
         if os.path.exists(PRESETS_FILE):
@@ -113,9 +125,10 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット適用 ----------
     @commands.command()
-    @commands.check(admin_only)
     async def load_preset(self, ctx, preset_name: str):
-        await ctx.send(f"[DEBUG] load_preset 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}, preset_name={preset_name}")
+        if not self.is_admin(ctx):
+            await ctx.send("❌ あなたは管理者ではありません。")
+            return
 
         if not os.path.exists(PRESETS_FILE):
             await ctx.send("プリセットファイルが存在しません。")
@@ -130,6 +143,7 @@ class OwnerCog(commands.Cog):
             return
 
         self.config_manager.set_server_config(ctx.guild.id, preset_conf)
+        await ctx.send(f"[DEBUG] load_preset 適用: {preset_name} by {ctx.author}")
         await ctx.send(f"✅ プリセット `{preset_name}` をこのサーバーに適用しました。")
 
 
