@@ -35,13 +35,49 @@ class ConfigManager:
                 return pair
         return None
 
+    def get_pair_by_guild(self, guild_id):
+        for pair in self.config["server_pairs"]:
+            if guild_id in (pair.get("A_ID"), pair.get("B_ID")):
+                return pair
+        return None
+
     # ------------------------
     # 管理者判定
     # ------------------------
     def is_admin(self, guild_id, user_id):
-        for pair in self.config["server_pairs"]:
-            if pair["A_ID"] == guild_id or pair["B_ID"] == guild_id:
-                return user_id in pair.get("ADMIN_IDS", [])
+        pair = self.get_pair_by_guild(guild_id)
+        if not pair:
+            return False
+        return user_id in pair.get("ADMIN_IDS", [])
+
+    # ------------------------
+    # 管理者追加（メイン以外）
+    # ------------------------
+    def add_admin(self, guild_id, user_id):
+        pair = self.get_pair_by_guild(guild_id)
+        if not pair:
+            return False
+        main_admin = pair["ADMIN_IDS"][0]
+        if user_id == main_admin or user_id in pair["ADMIN_IDS"]:
+            return False
+        pair["ADMIN_IDS"].append(user_id)
+        self.save_config()
+        return True
+
+    # ------------------------
+    # 管理者削除（メイン以外）
+    # ------------------------
+    def remove_admin(self, guild_id, user_id):
+        pair = self.get_pair_by_guild(guild_id)
+        if not pair:
+            return False
+        main_admin = pair["ADMIN_IDS"][0]
+        if user_id == main_admin:
+            return False
+        if user_id in pair["ADMIN_IDS"]:
+            pair["ADMIN_IDS"].remove(user_id)
+            self.save_config()
+            return True
         return False
 
     # ------------------------
@@ -50,26 +86,28 @@ class ConfigManager:
     def register_commands(self):
         bot = self.bot
 
-        # ---------- 管理者登録 ----------
+        # ---------- 管理者登録（初回メイン） ----------
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             guild_id = ctx.guild.id
-            # 既存ペアの管理者か確認
-            for pair in self.config["server_pairs"]:
-                if guild_id in (pair["A_ID"], pair["B_ID"]):
-                    await ctx.send("すでに管理者が登録されているサーバーです。")
-                    return
+            # 既存ペアか確認
+            if self.get_pair_by_guild(guild_id):
+                await ctx.send("すでに管理者が登録されているサーバーです。")
+                return
 
-            # 新しいペアを作る準備
+            # 新しいペア作成
             new_pair = {
                 "A_ID": None,
                 "B_ID": guild_id,
                 "CHANNEL_MAPPING": {"A_TO_B": {}},
-                "ADMIN_IDS": [ctx.author.id]
+                "ADMIN_IDS": [ctx.author.id]  # 初回メイン管理者
             }
             self.config["server_pairs"].append(new_pair)
             self.save_config()
-            await ctx.send(f"✅ 管理者として {ctx.author.display_name} を登録しました。\n✅ このサーバーを B サーバーに設定しました。")
+            await ctx.send(
+                f"✅ 管理者として {ctx.author.display_name} を登録しました。\n"
+                f"✅ このサーバーを B サーバーに設定しました。"
+            )
 
         # ---------- サーバーセット ----------
         @bot.command(name="set_server")
@@ -82,7 +120,6 @@ class ConfigManager:
 
             pair = self.get_pair_by_a(server_a_id)
             if pair is None:
-                # 既存ペアがない場合は作る
                 pair = {
                     "A_ID": server_a_id,
                     "B_ID": guild_b_id,
@@ -107,5 +144,6 @@ class ConfigManager:
                     mapping[str(ch.id)] = new_ch.id
             pair["CHANNEL_MAPPING"]["A_TO_B"] = mapping
             self.save_config()
-            await ctx.send(f"✅ Aサーバー ({bot_guild_a.name}) → Bサーバー ({bot_guild_b.name}) のチャンネルコピー完了")
-
+            await ctx.send(
+                f"✅ Aサーバー ({bot_guild_a.name}) → Bサーバー ({bot_guild_b.name}) のチャンネルコピー完了"
+            )
