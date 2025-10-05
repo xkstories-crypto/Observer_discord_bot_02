@@ -1,12 +1,10 @@
 # cogs/owner_cog.py
 from discord.ext import commands
-import json
-import os
 from config_manager import ConfigManager
+import json
 
-CONFIG_FILE = "config_data.json"  # ✅ main.py に合わせて統一
+CONFIG_FILE = "config_data.json"
 PRESETS_FILE = "presets.json"
-
 
 class OwnerCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
@@ -16,72 +14,72 @@ class OwnerCog(commands.Cog):
     # ---------- 管理者チェック ----------
     def admin_only(self):
         async def predicate(ctx):
-            pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-            if not pair:
-                return False
-            return ctx.author.id in pair.get("ADMIN_IDS", [])
+            conf = self.config_manager.get_server_config(ctx.guild.id)
+            return ctx.author.id in conf.get("ADMIN_IDS", [])
         return commands.check(predicate)
 
     # ---------- Bot停止 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def stopbot(self, ctx):
-        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-        if not pair or ctx.author.id not in pair.get("ADMIN_IDS", []):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
         await ctx.send("🛑 Bot を停止します…")
         await self.bot.close()
 
-    # ---------- チャンネル再取得 ----------
-    @commands.command()
-    @commands.check(lambda ctx: True)  # 管理者チェック関数呼び出し修正
-    async def reload(self, ctx):
-        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-        if not pair or ctx.author.id not in pair.get("ADMIN_IDS", []):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
+    # ---------- サーバー設定表示 ----------
+    @commands.command(name="show_config")
+    @commands.check(admin_only)
+    async def show_config(self, ctx):
+        conf = self.config_manager.get_server_config(ctx.guild.id)
+        try:
+            data_str = json.dumps(conf, indent=2, ensure_ascii=False)
+            if len(data_str) > 1900:
+                data_str = data_str[:1900] + "..."
+            await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
+        except Exception as e:
+            await ctx.send(f"エラー: {e}")
 
+    # ---------- チャンネル情報再取得 ----------
+    @commands.command()
+    @commands.check(admin_only)
+    async def reload(self, ctx):
+        conf = self.config_manager.get_server_config(ctx.guild.id)
         lines = []
 
-        vc_log_channel = self.bot.get_channel(pair.get("VC_LOG_CHANNEL"))
-        audit_log_channel = self.bot.get_channel(pair.get("AUDIT_LOG_CHANNEL"))
-        other_channel = self.bot.get_channel(pair.get("OTHER_CHANNEL"))
+        vc_log_channel = self.bot.get_channel(conf.get("VC_LOG_CHANNEL"))
+        audit_log_channel = self.bot.get_channel(conf.get("AUDIT_LOG_CHANNEL"))
+        other_channel = self.bot.get_channel(conf.get("OTHER_CHANNEL"))
 
-        lines.append(f"VC_LOG_CHANNEL ({pair.get('VC_LOG_CHANNEL')}): {vc_log_channel.name if vc_log_channel else '不明'}")
-        lines.append(f"AUDIT_LOG_CHANNEL ({pair.get('AUDIT_LOG_CHANNEL')}): {audit_log_channel.name if audit_log_channel else '不明'}")
-        lines.append(f"OTHER_CHANNEL ({pair.get('OTHER_CHANNEL')}): {other_channel.name if other_channel else '不明'}")
+        lines.append(f"VC_LOG_CHANNEL: {vc_log_channel.name if vc_log_channel else '不明'}")
+        lines.append(f"AUDIT_LOG_CHANNEL: {audit_log_channel.name if audit_log_channel else '不明'}")
+        lines.append(f"OTHER_CHANNEL: {other_channel.name if other_channel else '不明'}")
 
-        mapping = pair.get("CHANNEL_MAPPING", {}).get("A_TO_B", {})
+        mapping = conf.get("CHANNEL_MAPPING", {})
         for src_id, dest_id in mapping.items():
-            src_channel = self.bot.get_channel(src_id)
-            dest_channel = self.bot.get_channel(dest_id)
-            lines.append(f"{src_id} -> {dest_id} | src: {getattr(src_channel, 'name', '不明')} → dest: {getattr(dest_channel, 'name', '不明')}")
+            src_ch = self.bot.get_channel(int(src_id))
+            dest_ch = self.bot.get_channel(dest_id)
+            lines.append(f"{src_id} -> {dest_id} | src: {getattr(src_ch, 'name', '不明')} → dest: {getattr(dest_ch, 'name', '不明')}")
 
         await ctx.send("♻️ チャンネル情報を再取得しました:\n```\n" + "\n".join(lines) + "\n```")
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def check(self, ctx):
-        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-        if not pair or ctx.author.id not in pair.get("ADMIN_IDS", []):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        conf = self.config_manager.get_server_config(ctx.guild.id)
         guild = ctx.guild
         lines = [
             f"Server ({guild.id}): {guild.name}",
-            f"A_ID: {pair.get('A_ID')}",
-            f"B_ID: {pair.get('B_ID')}",
-            "CHANNEL_MAPPING (A → B):"
+            f"SERVER_A_ID: {conf.get('SERVER_A_ID')}",
+            f"SERVER_B_ID: {conf.get('SERVER_B_ID')}",
+            "CHANNEL_MAPPING:"
         ]
-
-        for src_id, dest_id in pair.get("CHANNEL_MAPPING", {}).get("A_TO_B", {}).items():
-            src_ch = self.bot.get_channel(src_id)
+        for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).items():
+            src_ch = self.bot.get_channel(int(src_id))
             dest_ch = self.bot.get_channel(dest_id)
             lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
 
         lines.append("ADMIN_IDS:")
-        for aid in pair.get("ADMIN_IDS", []):
+        for aid in conf.get("ADMIN_IDS", []):
             user = self.bot.get_user(aid)
             lines.append(f"  {aid} → {user.name if user else 'ユーザー不在'}")
 
@@ -89,19 +87,15 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット保存 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def save_preset(self, ctx, preset_name: str):
-        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-        if not pair or ctx.author.id not in pair.get("ADMIN_IDS", []):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        conf = self.config_manager.get_server_config(ctx.guild.id)
         presets = {}
         if os.path.exists(PRESETS_FILE):
             with open(PRESETS_FILE, "r", encoding="utf-8") as f:
                 presets = json.load(f)
 
-        presets[preset_name] = pair.copy()
-
+        presets[preset_name] = conf.copy()
         with open(PRESETS_FILE, "w", encoding="utf-8") as f:
             json.dump(presets, f, indent=2, ensure_ascii=False)
 
@@ -109,12 +103,8 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット適用 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def load_preset(self, ctx, preset_name: str):
-        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
-        if not pair or ctx.author.id not in pair.get("ADMIN_IDS", []):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
         if not os.path.exists(PRESETS_FILE):
             await ctx.send("プリセットファイルが存在しません。")
             return
@@ -127,8 +117,7 @@ class OwnerCog(commands.Cog):
             await ctx.send(f"プリセット `{preset_name}` が見つかりません。")
             return
 
-        self.config_manager.set_pair_by_guild(ctx.guild.id, preset_conf)
-        self.config_manager.save()
+        self.config_manager.set_server_config(ctx.guild.id, preset_conf)
         await ctx.send(f"✅ プリセット `{preset_name}` をこのサーバーに適用しました。")
 
 
