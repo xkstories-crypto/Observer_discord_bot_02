@@ -62,11 +62,11 @@ class OwnerCog(commands.Cog):
         guild = ctx.guild
         lines = [
             f"Server ({guild.id}): {guild.name}",
-            f"SERVER_A_ID: {conf.get('SERVER_A_ID')}",
-            f"SERVER_B_ID: {conf.get('SERVER_B_ID')}",
+            f"SERVER_A_ID: {conf.get('A_ID')}",
+            f"SERVER_B_ID: {conf.get('B_ID')}",
             "CHANNEL_MAPPING:"
         ]
-        for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).items():
+        for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {}).items():
             src_ch = self.bot.get_channel(int(src_id))
             dest_ch = self.bot.get_channel(dest_id)
             lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
