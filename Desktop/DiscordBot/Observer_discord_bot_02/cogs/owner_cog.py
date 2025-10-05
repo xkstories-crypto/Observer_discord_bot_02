@@ -4,7 +4,6 @@ from config_manager import ConfigManager
 import json
 import os
 
-CONFIG_FILE = "config_data.json"
 PRESETS_FILE = "presets.json"
 
 class OwnerCog(commands.Cog):
@@ -13,30 +12,33 @@ class OwnerCog(commands.Cog):
         self.config_manager = config_manager
 
     # ---------- 管理者チェック ----------
-    def is_admin(self, ctx):
-        conf = self.config_manager.get_server_config(ctx.guild.id)
-        return ctx.author.id in conf.get("ADMIN_IDS", [])
+    def admin_only(self):
+        async def predicate(ctx):
+            await ctx.send(f"[DEBUG] admin_only 呼ばれた by {ctx.author}")  # デバッグ
+            conf = self.config_manager.get_server_config(ctx.guild.id)
+            if not conf:
+                await ctx.send("[DEBUG] config が None です")
+                return False
+            return ctx.author.id in conf.get("ADMIN_IDS", [])
+        return commands.check(predicate)
 
     # ---------- Bot停止 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def stopbot(self, ctx):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-        await ctx.send(f"[DEBUG] stopbot 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
+        await ctx.send(f"[DEBUG] stopbot 呼ばれた by {ctx.author}")
         await ctx.send("🛑 Bot を停止します…")
         await self.bot.close()
 
     # ---------- サーバー設定表示 ----------
     @commands.command(name="show_config")
+    @commands.check(admin_only)
     async def show_config(self, ctx):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        await ctx.send(f"[DEBUG] show_config 呼ばれた by {ctx.author}")
         conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] show_config 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
-
+        if not conf:
+            await ctx.send("[DEBUG] config が None です")
+            return
         try:
             data_str = json.dumps(conf, indent=2, ensure_ascii=False)
             if len(data_str) > 1900:
@@ -47,16 +49,15 @@ class OwnerCog(commands.Cog):
 
     # ---------- チャンネル情報再取得 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def reload(self, ctx):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
+        await ctx.send(f"[DEBUG] reload 呼ばれた by {ctx.author}")
+        conf = self.config_manager.get_server_config(ctx.guild.id)
+        if not conf:
+            await ctx.send("[DEBUG] config が None です")
             return
 
-        conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] reload 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
-
         lines = []
-
         vc_log_channel = self.bot.get_channel(conf.get("VC_LOG_CHANNEL"))
         audit_log_channel = self.bot.get_channel(conf.get("AUDIT_LOG_CHANNEL"))
         other_channel = self.bot.get_channel(conf.get("OTHER_CHANNEL"))
@@ -75,13 +76,13 @@ class OwnerCog(commands.Cog):
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def check(self, ctx):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
         conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] check 呼び出し: guild={ctx.guild.name} ({ctx.guild.id}), author={ctx.author}")
+        if not conf:
+            await ctx.send("[DEBUG] config が None です")
+            return
 
         guild = ctx.guild
         lines = [
@@ -104,13 +105,13 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット保存 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def save_preset(self, ctx, preset_name: str):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        await ctx.send(f"[DEBUG] save_preset 呼ばれた by {ctx.author}")
         conf = self.config_manager.get_server_config(ctx.guild.id)
-        await ctx.send(f"[DEBUG] save_preset 呼び出し: {preset_name} by {ctx.author}")
+        if not conf:
+            await ctx.send("[DEBUG] config が None です")
+            return
 
         presets = {}
         if os.path.exists(PRESETS_FILE):
@@ -125,11 +126,9 @@ class OwnerCog(commands.Cog):
 
     # ---------- プリセット適用 ----------
     @commands.command()
+    @commands.check(admin_only)
     async def load_preset(self, ctx, preset_name: str):
-        if not self.is_admin(ctx):
-            await ctx.send("❌ あなたは管理者ではありません。")
-            return
-
+        await ctx.send(f"[DEBUG] load_preset 呼ばれた by {ctx.author}")
         if not os.path.exists(PRESETS_FILE):
             await ctx.send("プリセットファイルが存在しません。")
             return
@@ -143,9 +142,7 @@ class OwnerCog(commands.Cog):
             return
 
         self.config_manager.set_server_config(ctx.guild.id, preset_conf)
-        await ctx.send(f"[DEBUG] load_preset 適用: {preset_name} by {ctx.author}")
         await ctx.send(f"✅ プリセット `{preset_name}` をこのサーバーに適用しました。")
-
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
