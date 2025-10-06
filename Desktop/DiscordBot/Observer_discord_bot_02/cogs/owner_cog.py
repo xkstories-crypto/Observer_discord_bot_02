@@ -1,60 +1,86 @@
 # cogs/owner_cog.py
-import discord
 from discord.ext import commands
+from config_manager import ConfigManager
 import json
+import os
+
+CONFIG_FILE = "config_data.json"
+PRESETS_FILE = "presets.json"
 
 class OwnerCog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
         self.bot = bot
-        self.config_manager = getattr(bot, "config_manager", None)
-        if self.config_manager is None:
-            raise RuntimeError("ConfigManager が Bot にセットされていません。")
+        self.config_manager = config_manager
 
-    @commands.command(name="check")
-    async def check(self, ctx: commands.Context):
-        guild_id = ctx.guild.id
-        pair = self.config_manager.get_server_config(guild_id)
-        if not pair:
-            await ctx.send("このサーバーはまだ登録されていません。")
+    # ---------- 管理者チェック ----------
+    def admin_only(self):
+        async def predicate(ctx):
+            conf = self.config_manager.get_server_config(ctx.guild.id)
+            await ctx.send(f"[DEBUG] admin_only: conf={conf}")
+            if not conf:
+                await ctx.send("[DEBUG] admin_only: configがNoneです")
+                return False
+            admin_ids = conf.get("ADMIN_IDS", [])
+            await ctx.send(f"[DEBUG] admin_only: ADMIN_IDS={admin_ids}, author_id={ctx.author.id}")
+            return ctx.author.id in admin_ids
+        return commands.check(predicate)
+
+    # ---------- Bot停止 ----------
+    @commands.command()
+    @commands.check(admin_only)
+    async def stopbot(self, ctx):
+        await ctx.send("🛑 Bot を停止します…")
+        await self.bot.close()
+
+    # ---------- サーバー設定表示 ----------
+    @commands.command(name="show_config")
+    @commands.check(admin_only)
+    async def show_config(self, ctx):
+        await ctx.send(f"[DEBUG] show_config 呼ばれた by {ctx.author}")
+        conf = self.config_manager.get_server_config(ctx.guild.id)
+        if not conf:
+            await ctx.send("[DEBUG] show_config: configがNoneです")
+            return
+        try:
+            data_str = json.dumps(conf, indent=2, ensure_ascii=False)
+            if len(data_str) > 1900:
+                data_str = data_str[:1900] + "..."
+            await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
+        except Exception as e:
+            await ctx.send(f"[DEBUG] show_config: エラー {e}")
+
+    # ---------- サーバー・チャンネル確認 ----------
+    @commands.command()
+    @commands.check(admin_only)
+    async def check(self, ctx):
+        await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
+        conf = self.config_manager.get_server_config(ctx.guild.id)
+        if not conf:
+            await ctx.send("[DEBUG] check: configがNoneです")
             return
 
-        a_guild = self.bot.get_guild(pair.get("A_ID"))
-        b_guild = self.bot.get_guild(pair.get("B_ID"))
+        guild = ctx.guild
+        lines = [
+            f"Server ({guild.id}): {guild.name}",
+            f"SERVER_A_ID: {conf.get('A_ID')}",
+            f"SERVER_B_ID: {conf.get('B_ID')}",
+            "CHANNEL_MAPPING:"
+        ]
+        for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {}).items():
+            src_ch = self.bot.get_channel(int(src_id))
+            dest_ch = self.bot.get_channel(dest_id)
+            lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
 
-        a_name = a_guild.name if a_guild else f"Aサーバー ({pair.get('A_ID')}) 未取得"
-        b_name = b_guild.name if b_guild else f"Bサーバー ({pair.get('B_ID')}) 未取得"
+        lines.append("ADMIN_IDS:")
+        for aid in conf.get("ADMIN_IDS", []):
+            user = self.bot.get_user(aid)
+            lines.append(f"  {aid} → {user.name if user else 'ユーザー不在'}")
 
-        channel_mapping = pair.get("CHANNEL_MAPPING", {}).get("A_TO_B", {})
-        mapping_text = "\n".join([f"{a_id} → {b_id}" for a_id, b_id in channel_mapping.items()]) or "なし"
+        await ctx.send("🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```")
 
-        admin_ids = pair.get("ADMIN_IDS", [])
-        admin_mentions = ", ".join([f"<@{uid}>" for uid in admin_ids]) or "なし"
-
-        embed = discord.Embed(title="サーバー設定確認", color=discord.Color.blue())
-        embed.add_field(name="Aサーバー", value=a_name, inline=False)
-        embed.add_field(name="Bサーバー", value=b_name, inline=False)
-        embed.add_field(name="チャンネルマッピング (A → B)", value=mapping_text, inline=False)
-        embed.add_field(name="管理者", value=admin_mentions, inline=False)
-
-        await ctx.send(embed=embed)
-
-    @commands.command(name="show_config")
-    async def show_config(self, ctx: commands.Context):
-        try:
-            with open("config_data.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-            pretty_json = json.dumps(data, indent=2, ensure_ascii=False)
-            if len(pretty_json) > 1900:
-                await ctx.send("config_data.json が長すぎるため、ファイルとして送信します。")
-                await ctx.send(file=discord.File("config_data.json"))
-            else:
-                await ctx.send(f"```json\n{pretty_json}\n```")
-        except FileNotFoundError:
-            await ctx.send("config_data.json が存在しません。")
-
-# ---------- 非同期 setup ----------
+# ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
-        raise RuntimeError("ConfigManager が Bot にセットされていません。")
-    await bot.add_cog(OwnerCog(bot))
+        raise RuntimeError("ConfigManager が bot にセットされていません")
+    await bot.add_cog(OwnerCog(bot, config_manager))
