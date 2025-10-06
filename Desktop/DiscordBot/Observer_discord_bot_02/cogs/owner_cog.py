@@ -54,7 +54,7 @@ class OwnerCog(commands.Cog):
     @commands.check(admin_only)
     async def check(self, ctx):
         await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
-        conf = self.config_manager.get_pair_by_guild(ctx.guild.id)
+        conf = self.config_manager.get_server_config(ctx.guild.id)
         if not conf:
             await ctx.send("[DEBUG] check: configがNoneです")
             return
