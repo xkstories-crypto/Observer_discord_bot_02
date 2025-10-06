@@ -1,13 +1,14 @@
 # cogs/owner_cog.py
 import discord
 from discord.ext import commands
-from config_manager import ConfigManager
 import json
 
 class OwnerCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.config_manager = config_manager
+        self.config_manager = getattr(bot, "config_manager", None)
+        if self.config_manager is None:
+            raise RuntimeError("ConfigManager が Bot にセットされていません。")
 
     @commands.command(name="check")
     async def check(self, ctx: commands.Context):
@@ -45,13 +46,15 @@ class OwnerCog(commands.Cog):
             pretty_json = json.dumps(data, indent=2, ensure_ascii=False)
             if len(pretty_json) > 1900:
                 await ctx.send("config_data.json が長すぎるため、ファイルとして送信します。")
-                with open("config_data.json", "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
                 await ctx.send(file=discord.File("config_data.json"))
             else:
                 await ctx.send(f"```json\n{pretty_json}\n```")
         except FileNotFoundError:
             await ctx.send("config_data.json が存在しません。")
 
-def setup(bot: commands.Bot, config_manager: ConfigManager):
-    bot.add_cog(OwnerCog(bot, config_manager))
+# ---------- 非同期 setup ----------
+async def setup(bot: commands.Bot):
+    config_manager = getattr(bot, "config_manager", None)
+    if not config_manager:
+        raise RuntimeError("ConfigManager が Bot にセットされていません。")
+    await bot.add_cog(OwnerCog(bot))
