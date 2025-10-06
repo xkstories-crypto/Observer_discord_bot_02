@@ -97,6 +97,20 @@ class OwnerCog(commands.Cog):
 
         await ctx.send("🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```")
 
+    # ===============================
+    # ⚠ デバッグ・初期化用コマンド（消してもOK）⚠
+    # ===============================
+    @commands.command()
+    @commands.check(admin_only)
+    async def reset_config(self, ctx):
+        """Bot 上で config_data.json を初期化"""
+        self.config_manager.config = {"server_pairs": []}
+        self.config_manager.save_config()
+        await ctx.send("⚠ config_data.json をリセットしました（server_pairs は空です）")
+    # ===============================
+    # ⚠ ここまでデバッグ用
+    # ===============================
+
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
