@@ -2,10 +2,6 @@
 from discord.ext import commands
 from config_manager import ConfigManager
 import json
-import os
-
-CONFIG_FILE = "config_data.json"
-PRESETS_FILE = "presets.json"
 
 class OwnerCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
@@ -15,18 +11,18 @@ class OwnerCog(commands.Cog):
     # ---------- 管理者チェック ----------
     def admin_only(self):
         async def predicate(ctx):
-            conf = self.config_manager.get_server_config(ctx.guild.id)
-            await ctx.send(f"[DEBUG] admin_only: conf={conf}")
-            if not conf:
+            pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
+            if not pair:
                 await ctx.send("[DEBUG] admin_only: configがNoneです")
                 return False
+            b_guild_id = pair["B_ID"]
+            conf = self.config_manager.get_server_config(b_guild_id)
             admin_ids = conf.get("ADMIN_IDS", [])
-            await ctx.send(f"[DEBUG] admin_only: ADMIN_IDS={admin_ids}, author_id={ctx.author.id}")
             return ctx.author.id in admin_ids
         return commands.check(predicate)
 
     # ---------- Bot停止 ----------
-    @commands.command()
+    @commands.command(name="stopbot")
     @commands.check(admin_only)
     async def stopbot(self, ctx):
         await ctx.send("🛑 Bot を停止します…")
@@ -36,30 +32,32 @@ class OwnerCog(commands.Cog):
     @commands.command(name="show_config")
     @commands.check(admin_only)
     async def show_config(self, ctx):
-        await ctx.send(f"[DEBUG] show_config 呼ばれた by {ctx.author}")
-        conf = self.config_manager.get_server_config(ctx.guild.id)
-        if not conf:
+        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
+        if not pair:
             await ctx.send("[DEBUG] show_config: configがNoneです")
             return
-        try:
-            data_str = json.dumps(conf, indent=2, ensure_ascii=False)
-            if len(data_str) > 1900:
-                data_str = data_str[:1900] + "..."
-            await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
-        except Exception as e:
-            await ctx.send(f"[DEBUG] show_config: エラー {e}")
+
+        b_guild_id = pair["B_ID"]
+        conf = self.config_manager.get_server_config(b_guild_id)
+
+        data_str = json.dumps(conf, indent=2, ensure_ascii=False)
+        if len(data_str) > 1900:
+            data_str = data_str[:1900] + "..."
+        await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
 
     # ---------- サーバー・チャンネル確認 ----------
-    @commands.command()
+    @commands.command(name="check")
     @commands.check(admin_only)
     async def check(self, ctx):
-        await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
-        conf = self.config_manager.get_server_config(ctx.guild.id)
-        if not conf:
+        pair = self.config_manager.get_pair_by_guild(ctx.guild.id)
+        if not pair:
             await ctx.send("[DEBUG] check: configがNoneです")
             return
 
-        guild = ctx.guild
+        b_guild_id = pair["B_ID"]
+        conf = self.config_manager.get_server_config(b_guild_id)
+
+        guild = self.bot.get_guild(b_guild_id)
         lines = [
             f"Server ({guild.id}): {guild.name}",
             f"SERVER_A_ID: {conf.get('A_ID')}",
@@ -69,7 +67,9 @@ class OwnerCog(commands.Cog):
         for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {}).items():
             src_ch = self.bot.get_channel(int(src_id))
             dest_ch = self.bot.get_channel(dest_id)
-            lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
+            lines.append(
+                f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}"
+            )
 
         lines.append("ADMIN_IDS:")
         for aid in conf.get("ADMIN_IDS", []):
@@ -77,6 +77,7 @@ class OwnerCog(commands.Cog):
             lines.append(f"  {aid} → {user.name if user else 'ユーザー不在'}")
 
         await ctx.send("🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```")
+
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
