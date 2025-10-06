@@ -2,10 +2,6 @@
 from discord.ext import commands
 from config_manager import ConfigManager
 import json
-import os
-
-CONFIG_FILE = "config_data.json"
-PRESETS_FILE = "presets.json"
 
 class OwnerCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
@@ -37,10 +33,22 @@ class OwnerCog(commands.Cog):
     @commands.check(admin_only)
     async def show_config(self, ctx):
         await ctx.send(f"[DEBUG] show_config 呼ばれた by {ctx.author}")
+
+        # デバッグ1: config 全体
+        await ctx.send(f"[DEBUG] 現在の config:\n```json\n{json.dumps(self.config_manager.config, indent=2, ensure_ascii=False)}\n```")
+
+        # デバッグ2: guild_id
+        await ctx.send(f"[DEBUG] ctx.guild.id: {ctx.guild.id}, type: {type(ctx.guild.id)}")
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
+
+        # デバッグ3: get_server_config の返り値
+        await ctx.send(f"[DEBUG] get_server_config の返り値: {conf}")
+
         if not conf:
             await ctx.send("[DEBUG] show_config: configがNoneです")
             return
+
         try:
             data_str = json.dumps(conf, indent=2, ensure_ascii=False)
             if len(data_str) > 1900:
@@ -54,7 +62,18 @@ class OwnerCog(commands.Cog):
     @commands.check(admin_only)
     async def check(self, ctx):
         await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
+
+        # デバッグ1: config 全体
+        await ctx.send(f"[DEBUG] 現在の config:\n```json\n{json.dumps(self.config_manager.config, indent=2, ensure_ascii=False)}\n```")
+
+        # デバッグ2: guild_id
+        await ctx.send(f"[DEBUG] ctx.guild.id: {ctx.guild.id}, type: {type(ctx.guild.id)}")
+
         conf = self.config_manager.get_server_config(ctx.guild.id)
+
+        # デバッグ3: get_server_config の返り値
+        await ctx.send(f"[DEBUG] get_server_config の返り値: {conf}")
+
         if not conf:
             await ctx.send("[DEBUG] check: configがNoneです")
             return
