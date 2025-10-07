@@ -137,11 +137,6 @@ class ConfigManager:
                 await ctx.send("Botが両方のサーバーに参加していません")
                 return
 
-            # ---------- チャンネル全削除（あとで消す） ----------
-            for ch in bot_guild_b.channels:
-                if ch.name not in ["debug-channel"]:
-                    await ch.delete()
-
             # ---------- チャンネルマッピング ----------
             mapping = pair["CHANNEL_MAPPING"]["A_TO_B"]
             for ch in bot_guild_a.channels:
