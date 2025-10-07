@@ -4,20 +4,19 @@ from discord.ext import commands
 import json
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
-import io
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         """
-        drive_file_id:1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx
-
+        drive_file_id: Google Drive 上の設定ファイルID
         """
         self.bot = bot
         self.drive_file_id = drive_file_id
         self.config = {"server_pairs": []}
 
+        # Google Drive 認証（サービスアカウント）
         self.gauth = GoogleAuth()
-        self.gauth.LoadServiceConfigFile('service_account.json')
+        self.gauth.ServiceAuth(filename="service_account.json")
         self.drive = GoogleDrive(self.gauth)
 
         self.load_config()
@@ -103,11 +102,9 @@ class ConfigManager:
             }
             self.config["server_pairs"].append(new_pair)
 
-            # デバッグ用チャンネル作成
             debug_ch = await ctx.guild.create_text_channel("debug-channel")
             new_pair["DEBUG_CHANNEL"] = debug_ch.id
 
-            # VCカテゴリ作成
             vc_category = await ctx.guild.create_category("VCカテゴリ")
             vc_channel = await ctx.guild.create_voice_channel("VC-ボイス", category=vc_category)
             vc_text_channel = await ctx.guild.create_text_channel("VC-チャット", category=vc_category)
@@ -146,7 +143,6 @@ class ConfigManager:
                 await ctx.send("Botが両方のサーバーに参加していません")
                 return
 
-            # チャンネルマッピング
             mapping = pair["CHANNEL_MAPPING"]["A_TO_B"]
             for ch in bot_guild_a.channels:
                 if isinstance(ch, discord.TextChannel):
