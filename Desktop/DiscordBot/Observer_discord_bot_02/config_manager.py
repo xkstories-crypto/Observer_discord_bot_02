@@ -2,13 +2,23 @@
 import discord
 from discord.ext import commands
 import json
-import os
-
-CONFIG_FILE = os.path.join("data", "config_store.json")
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
+import io
 
 class ConfigManager:
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, drive_file_id: str):
+        """
+        drive_file_id: Google Drive 上の設定ファイルの ID
+        """
         self.bot = bot
+        self.drive_file_id = drive_file_id
+        self.config = {"server_pairs": []}
+
+        self.gauth = GoogleAuth()
+        self.gauth.LoadServiceConfigFile('service_account.json')
+        self.drive = GoogleDrive(self.gauth)
+
         self.load_config()
         self.register_commands()
 
@@ -16,29 +26,30 @@ class ConfigManager:
     # 設定ロード/保存
     # ------------------------
     def load_config(self):
-        os.makedirs("data", exist_ok=True)
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    self.config = json.load(f)
-                print(f"[LOAD] {CONFIG_FILE} 読み込み成功")
-            except Exception as e:
-                print(f"[ERROR] 設定ファイル読み込み失敗: {e}")
-                self.config = {"server_pairs": []}
-        else:
+        try:
+            file_obj = self.drive.CreateFile({'id': self.drive_file_id})
+            file_obj.FetchMetadata()
+            content = file_obj.GetContentString()
+            self.config = json.loads(content)
+            print(f"[LOAD] Google Drive から読み込み成功")
+        except Exception as e:
+            print(f"[ERROR] Drive から読み込み失敗: {e}, 新規作成します")
             self.config = {"server_pairs": []}
             self.save_config()
-            print(f"[INIT] {CONFIG_FILE} 新規作成")
 
     def save_config(self):
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, indent=2, ensure_ascii=False)
-        print(f"[SAVE] {CONFIG_FILE} 保存完了")
+        try:
+            file_obj = self.drive.CreateFile({'id': self.drive_file_id})
+            file_obj.SetContentString(json.dumps(self.config, indent=2, ensure_ascii=False))
+            file_obj.Upload()
+            print(f"[SAVE] Google Drive に保存完了")
+        except Exception as e:
+            print(f"[ERROR] Drive に保存できませんでした: {e}")
 
     def reset_config(self):
         self.config = {"server_pairs": []}
         self.save_config()
-        print(f"[RESET] {CONFIG_FILE} を初期化しました。")
+        print(f"[RESET] 設定ファイルを初期化しました")
 
     # ------------------------
     # サーバーペア取得
@@ -70,7 +81,6 @@ class ConfigManager:
     def register_commands(self):
         bot = self.bot
 
-        # ---------- adomin ----------
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             guild_id = ctx.guild.id
@@ -79,7 +89,6 @@ class ConfigManager:
                 await ctx.send("すでに管理者が登録されています")
                 return
 
-            # 新規Bサーバーペア作成
             new_pair = {
                 "A_ID": None,
                 "B_ID": guild_id,
@@ -93,20 +102,19 @@ class ConfigManager:
             }
             self.config["server_pairs"].append(new_pair)
 
-            # ---------- デバッグ用チャンネル作成 ----------
+            # デバッグ用チャンネル作成
             debug_ch = await ctx.guild.create_text_channel("debug-channel")
             new_pair["DEBUG_CHANNEL"] = debug_ch.id
 
-            # ---------- VCカテゴリ作成 ----------
+            # VCカテゴリ作成
             vc_category = await ctx.guild.create_category("VCカテゴリ")
             vc_channel = await ctx.guild.create_voice_channel("VC-ボイス", category=vc_category)
             vc_text_channel = await ctx.guild.create_text_channel("VC-チャット", category=vc_category)
             new_pair["VC_LOG_CHANNEL"] = vc_channel.id
 
             self.save_config()
-            await ctx.send(f"✅ {ctx.author.display_name} を管理者登録しました。デバッグ用チャンネルとVCカテゴリも作成済みです。")
+            await ctx.send(f"✅ {ctx.author.display_name} を管理者登録しました。")
 
-        # ---------- set_server ----------
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, server_a_id: int):
             guild_b_id = ctx.guild.id
@@ -137,7 +145,7 @@ class ConfigManager:
                 await ctx.send("Botが両方のサーバーに参加していません")
                 return
 
-            # ---------- チャンネルマッピング ----------
+            # チャンネルマッピング
             mapping = pair["CHANNEL_MAPPING"]["A_TO_B"]
             for ch in bot_guild_a.channels:
                 if isinstance(ch, discord.TextChannel):
