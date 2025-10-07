@@ -1,4 +1,4 @@
-# owner_cog.py
+# cogs/owner_cog.py
 from discord.ext import commands
 from config_manager import ConfigManager
 import json
@@ -12,10 +12,13 @@ class OwnerCog(commands.Cog):
     def admin_only(self):
         async def predicate(ctx):
             conf = self.config_manager.get_server_config(ctx.guild.id)
+            await ctx.send(f"[DEBUG] admin_only: conf={conf}")
             if not conf:
                 await ctx.send("[DEBUG] admin_only: configがNoneです")
                 return False
-            return ctx.author.id in conf.get("ADMIN_IDS", [])
+            admin_ids = conf.get("ADMIN_IDS", [])
+            await ctx.send(f"[DEBUG] admin_only: ADMIN_IDS={admin_ids}, author_id={ctx.author.id}")
+            return ctx.author.id in admin_ids
         return commands.check(predicate)
 
     # ---------- Bot停止 ----------
@@ -25,7 +28,7 @@ class OwnerCog(commands.Cog):
         await ctx.send("🛑 Bot を停止します…")
         await self.bot.close()
 
-    # ---------- サーバー設定表示（JSON全体） ----------
+    # ---------- サーバー設定表示 ----------
     @commands.command(name="show_config")
     @commands.check(admin_only)
     async def show_config(self, ctx):
@@ -34,11 +37,11 @@ class OwnerCog(commands.Cog):
             await ctx.send("[DEBUG] show_config: configがNoneです")
             return
 
-        # JSON全体を表示（長い場合は省略）
+        # JSON全体を文字列化（長い場合は1900文字で省略）
         data_str = json.dumps(conf, indent=2, ensure_ascii=False)
-        chunks = [data_str[i:i+1900] for i in range(0, len(data_str), 1900)]
-        for chunk in chunks:
-            await ctx.send(f"🗂 サーバー設定:\n```json\n{chunk}\n```")
+        if len(data_str) > 1900:
+            data_str = data_str[:1900] + "..."
+        await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
@@ -52,50 +55,41 @@ class OwnerCog(commands.Cog):
         guild = ctx.guild
         lines = [
             f"Server ({guild.id}): {guild.name}",
-            f"SERVER_A_ID: {conf.get('A_ID')}",
-            f"SERVER_B_ID: {conf.get('B_ID')}",
+            f"A_ID: {conf.get('A_ID')}",
+            f"B_ID: {conf.get('B_ID')}",
             "CHANNEL_MAPPING:"
         ]
         mapping = conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {})
-        if mapping:
+        if not mapping:
+            lines.append("  (まだチャンネルマッピングはありません)")
+        else:
             for src_id, dest_id in mapping.items():
                 src_ch = self.bot.get_channel(int(src_id))
                 dest_ch = self.bot.get_channel(dest_id)
                 lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
-        else:
-            lines.append("  （チャンネルマッピングなし）")
 
-        # 管理者
+        # 管理者表示
         lines.append("ADMIN_IDS:")
         for aid in conf.get("ADMIN_IDS", []):
             user = self.bot.get_user(aid)
             lines.append(f"  {aid} → {user.name if user else 'ユーザー不在'}")
 
-        # 追加チャンネル
-        for key in ["DEBUG_CHANNEL", "VC_LOG_CHANNEL", "AUDIT_LOG_CHANNEL", "OTHER_CHANNEL"]:
-            ch_id = conf.get(key)
-            ch = self.bot.get_channel(ch_id) if ch_id else None
-            lines.append(f"{key}: {ch.name if ch else ch_id}")
+        # 追加チャンネル情報
+        lines.append(f"DEBUG_CHANNEL: {conf.get('DEBUG_CHANNEL')}")
+        lines.append(f"VC_LOG_CHANNEL: {conf.get('VC_LOG_CHANNEL')}")
+        lines.append(f"AUDIT_LOG_CHANNEL: {conf.get('AUDIT_LOG_CHANNEL')}")
+        lines.append(f"OTHER_CHANNEL: {conf.get('OTHER_CHANNEL')}")
+        lines.append(f"READ_USERS: {conf.get('READ_USERS')}")
 
-        # 読み取りユーザー
-        read_users = []
-        for uid in conf.get("READ_USERS", []):
-            user = self.bot.get_user(uid)
-            read_users.append(user.name if user else str(uid))
-        lines.append(f"READ_USERS: {read_users}")
-
-        # Discord 文字制限対応
-        chunk_size = 1900
-        output = "\n".join(lines)
-        for i in range(0, len(output), chunk_size):
-            await ctx.send("🧩 設定情報:\n```\n" + output[i:i+chunk_size] + "\n```")
-
-    # ---------- 設定初期化 ----------
-    @commands.command()
-    @commands.check(admin_only)
-    async def reset_config(self, ctx):
-        self.config_manager.reset_config()
-        await ctx.send("⚠ 設定ファイルを初期化しました（server_pairs は空です）")
+        # 文字列化して送信（長すぎる場合は分割）
+        msg = "🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```"
+        if len(msg) > 1900:
+            # 適当に分割して送る
+            chunks = [msg[i:i+1900] for i in range(0, len(msg), 1900)]
+            for c in chunks:
+                await ctx.send(c)
+        else:
+            await ctx.send(msg)
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
