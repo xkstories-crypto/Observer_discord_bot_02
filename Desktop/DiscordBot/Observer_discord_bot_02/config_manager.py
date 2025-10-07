@@ -9,7 +9,8 @@ import io
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         """
-        drive_file_id: Google Drive 上の設定ファイルの ID
+        drive_file_id:1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx
+
         """
         self.bot = bot
         self.drive_file_id = drive_file_id
