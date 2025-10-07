@@ -1,7 +1,7 @@
 # config_manager.py
 import os
 import json
-import tempfile
+import io
 import discord
 from discord.ext import commands
 from pydrive2.auth import GoogleAuth
@@ -17,18 +17,20 @@ class ConfigManager:
         self.drive_file_id = drive_file_id
         self.config = {"server_pairs": []}
 
-        # ---------- Google Drive 認証 ----------
+        # ---------- Google Drive 認証（環境変数からサービスアカウントJSON） ----------
         service_json_str = os.getenv("SERVICE_ACCOUNT_JSON")
         if not service_json_str:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
-
-        # 一時ファイルに書き込む
-        with tempfile.NamedTemporaryFile("w+", delete=False) as f:
-            f.write(service_json_str)
-            tmp_path = f.name
+        
+        service_file = io.StringIO(service_json_str)
 
         self.gauth = GoogleAuth()
-        self.gauth.ServiceAuth(filename=tmp_path)
+        # PyDrive2 のデフォルト認証関数を無効化
+        self.gauth.LoadServiceConfigFile = lambda *a, **k: None
+        self.gauth.ServiceAuth = lambda *a, **k: None
+        self.gauth.credentials = None
+        self.gauth.service_account_json = json.load(service_file)
+
         self.drive = GoogleDrive(self.gauth)
 
         # 設定ロードとコマンド登録
@@ -86,7 +88,7 @@ class ConfigManager:
         return user_id in pair.get("ADMIN_IDS", [])
 
     # ------------------------
-    # コマンド登録（例: 管理者登録 & サーバー設定）
+    # コマンド登録（管理者登録 & サーバー設定の例）
     # ------------------------
     def register_commands(self):
         bot = self.bot
@@ -124,44 +126,3 @@ class ConfigManager:
 
             self.save_config()
             await ctx.send(f"✅ {ctx.author.display_name} を管理者登録しました。")
-
-        @bot.command(name="set_server")
-        async def set_server(ctx: commands.Context, server_a_id: int):
-            guild_b_id = ctx.guild.id
-            if not self.is_admin(guild_b_id, ctx.author.id):
-                await ctx.send("管理者のみ使用可能です。")
-                return
-
-            pair = self.get_pair_by_a(server_a_id)
-            if not pair:
-                pair = {
-                    "A_ID": server_a_id,
-                    "B_ID": guild_b_id,
-                    "CHANNEL_MAPPING": {"A_TO_B": {}},
-                    "ADMIN_IDS": [ctx.author.id],
-                    "DEBUG_CHANNEL": None,
-                    "VC_LOG_CHANNEL": None,
-                    "AUDIT_LOG_CHANNEL": None,
-                    "OTHER_CHANNEL": None,
-                    "READ_USERS": []
-                }
-                self.config["server_pairs"].append(pair)
-            else:
-                pair["B_ID"] = guild_b_id
-
-            bot_guild_a = bot.get_guild(server_a_id)
-            bot_guild_b = bot.get_guild(guild_b_id)
-            if not bot_guild_a or not bot_guild_b:
-                await ctx.send("Botが両方のサーバーに参加していません")
-                return
-
-            mapping = pair["CHANNEL_MAPPING"]["A_TO_B"]
-            for ch in bot_guild_a.channels:
-                if isinstance(ch, discord.TextChannel):
-                    if str(ch.id) not in mapping:
-                        new_ch = await bot_guild_b.create_text_channel(name=ch.name)
-                        mapping[str(ch.id)] = new_ch.id
-
-            pair["CHANNEL_MAPPING"]["A_TO_B"] = mapping
-            self.save_config()
-            await ctx.send(f"✅ Aサーバー → Bサーバー のチャンネルマッピング完了")
