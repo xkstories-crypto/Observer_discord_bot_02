@@ -11,14 +11,15 @@ from config_manager import ConfigManager
 # ---------- 環境変数からトークン取得 ----------
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
-    raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
+    raise ValueError("DISCORD_TOKEN が取得できません。")
 TOKEN = TOKEN.strip()
 print(f"Raw token repr: {repr(TOKEN)}")
 print(f"Token length: {len(TOKEN)}")
 
 # ---------- Google Drive ファイルID ----------
-DRIVE_FILE_ID = "1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx"  # 自分のファイルIDに変更
-SERVICE_ACCOUNT_JSON = "service_account.json"  # Render にアップロード済みのJSON
+DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")
+if not DRIVE_FILE_ID:
+    raise ValueError("DRIVE_FILE_ID が取得できません。")
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -46,9 +47,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------- 非同期でBot起動 ----------
 async def main():
     async with bot:
-        # ConfigManager 初期化
+        # ConfigManager 初期化（環境変数から JSON をロード）
         config_manager = ConfigManager(bot, DRIVE_FILE_ID)
-        bot.config_manager = config_manager  # Cog で使用可能に
+        bot.config_manager = config_manager
 
         # Cog のロード
         cogs = [
