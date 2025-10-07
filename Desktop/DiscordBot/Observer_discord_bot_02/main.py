@@ -8,17 +8,17 @@ import traceback
 import asyncio
 from config_manager import ConfigManager
 
-# ---------- 環境変数からトークン取得＆デバッグ ----------
-token_env = os.getenv("DISCORD_TOKEN")
-print("Raw token repr:", repr(token_env))  # 空白や改行も可視化
-print("Token length:", len(token_env) if token_env else "No token found")
-
-if token_env is None:
+# ---------- 環境変数からトークン取得 ----------
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
     raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
-TOKEN = token_env.strip()
+TOKEN = TOKEN.strip()
+print(f"Raw token repr: {repr(TOKEN)}")
+print(f"Token length: {len(TOKEN)}")
 
 # ---------- Google Drive ファイルID ----------
-DRIVE_FILE_ID = "1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx"  # ←ここを自分のファイルIDに変更
+DRIVE_FILE_ID = "1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx"  # 自分のファイルIDに変更
+SERVICE_ACCOUNT_JSON = "service_account.json"  # Render にアップロード済みのJSON
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -46,18 +46,17 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------- 非同期でBot起動 ----------
 async def main():
     async with bot:
-        # ---------- ConfigManager ----------
+        # ConfigManager 初期化
         config_manager = ConfigManager(bot, DRIVE_FILE_ID)
-        bot.config_manager = config_manager  # Cog で使用できるように属性追加
+        bot.config_manager = config_manager  # Cog で使用可能に
 
-        # ---------- Cog のロード ----------
+        # Cog のロード
         cogs = [
             "cogs.transfer_cog",
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
         ]
-
         for cog_path in cogs:
             try:
                 await bot.load_extension(cog_path)
@@ -66,7 +65,7 @@ async def main():
                 print(f"[❌] Failed to load {cog_path}: {e}")
                 traceback.print_exc()
 
-        # ---------- Bot 起動時イベント ----------
+        # Bot 起動時イベント
         @bot.event
         async def on_ready():
             print(f"[🟢] Bot logged in as {bot.user}")
@@ -77,6 +76,6 @@ async def main():
 
         await bot.start(TOKEN)
 
-# ---------- 非同期で実行 ----------
+# ---------- 実行 ----------
 if __name__ == "__main__":
     asyncio.run(main())
