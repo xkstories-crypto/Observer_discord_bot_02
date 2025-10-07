@@ -17,6 +17,9 @@ if token_env is None:
     raise ValueError("DISCORD_TOKEN が取得できません。Render の環境変数を確認してください。")
 TOKEN = token_env.strip()
 
+# ---------- Google Drive ファイルID ----------
+DRIVE_FILE_ID = "1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx"  # ←ここを自分のファイルIDに変更
+
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -44,7 +47,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def main():
     async with bot:
         # ---------- ConfigManager ----------
-        config_manager = ConfigManager(bot)
+        config_manager = ConfigManager(bot, DRIVE_FILE_ID)
         bot.config_manager = config_manager  # Cog で使用できるように属性追加
 
         # ---------- Cog のロード ----------
