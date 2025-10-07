@@ -31,48 +31,22 @@ class OwnerCog(commands.Cog):
     @commands.command(name="show_config")
     @commands.check(admin_only)
     async def show_config(self, ctx):
-        await ctx.send(f"[DEBUG] show_config 呼ばれた by {ctx.author}")
-
-        # デバッグ1: config 全体
-        await ctx.send(f"[DEBUG] 現在の config:\n```json\n{json.dumps(self.config_manager.config, indent=2, ensure_ascii=False)}\n```")
-
-        # デバッグ2: guild_id
-        await ctx.send(f"[DEBUG] ctx.guild.id: {ctx.guild.id}, type: {type(ctx.guild.id)}")
-
         conf = self.config_manager.get_server_config(ctx.guild.id)
-
-        # デバッグ3: get_server_config の返り値
-        await ctx.send(f"[DEBUG] get_server_config の返り値: {conf}")
-
         if not conf:
             await ctx.send("[DEBUG] show_config: configがNoneです")
             return
 
-        try:
-            data_str = json.dumps(conf, indent=2, ensure_ascii=False)
-            if len(data_str) > 1900:
-                data_str = data_str[:1900] + "..."
-            await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
-        except Exception as e:
-            await ctx.send(f"[DEBUG] show_config: エラー {e}")
+        # JSON全体を表示（長い場合は省略）
+        data_str = json.dumps(conf, indent=2, ensure_ascii=False)
+        if len(data_str) > 1900:
+            data_str = data_str[:1900] + "..."
+        await ctx.send(f"🗂 サーバー設定:\n```json\n{data_str}\n```")
 
     # ---------- サーバー・チャンネル確認 ----------
     @commands.command()
     @commands.check(admin_only)
     async def check(self, ctx):
-        await ctx.send(f"[DEBUG] check 呼ばれた by {ctx.author}")
-
-        # デバッグ1: config 全体
-        await ctx.send(f"[DEBUG] 現在の config:\n```json\n{json.dumps(self.config_manager.config, indent=2, ensure_ascii=False)}\n```")
-
-        # デバッグ2: guild_id
-        await ctx.send(f"[DEBUG] ctx.guild.id: {ctx.guild.id}, type: {type(ctx.guild.id)}")
-
         conf = self.config_manager.get_server_config(ctx.guild.id)
-
-        # デバッグ3: get_server_config の返り値
-        await ctx.send(f"[DEBUG] get_server_config の返り値: {conf}")
-
         if not conf:
             await ctx.send("[DEBUG] check: configがNoneです")
             return
@@ -94,13 +68,19 @@ class OwnerCog(commands.Cog):
             user = self.bot.get_user(aid)
             lines.append(f"  {aid} → {user.name if user else 'ユーザー不在'}")
 
+        # 追加チャンネル情報
+        lines.append(f"DEBUG_CHANNEL: {conf.get('DEBUG_CHANNEL')}")
+        lines.append(f"VC_LOG_CHANNEL: {conf.get('VC_LOG_CHANNEL')}")
+        lines.append(f"AUDIT_LOG_CHANNEL: {conf.get('AUDIT_LOG_CHANNEL')}")
+        lines.append(f"OTHER_CHANNEL: {conf.get('OTHER_CHANNEL')}")
+        lines.append(f"READ_USERS: {conf.get('READ_USERS')}")
+
         await ctx.send("🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```")
 
-    # ---------- 設定初期化（新ファイル対応） ----------
+    # ---------- 設定初期化 ----------
     @commands.command()
     @commands.check(admin_only)
     async def reset_config(self, ctx):
-        """Bot 上で設定ファイルを初期化"""
         self.config_manager.reset_config()
         await ctx.send("⚠ 設定ファイルを初期化しました（server_pairs は空です）")
 
