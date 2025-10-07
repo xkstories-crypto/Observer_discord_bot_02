@@ -4,7 +4,9 @@ from discord.ext import commands
 import json
 import os
 
-CONFIG_FILE = "config_data.json"
+# ⚠ 古いファイルを避けるため新しい保存先に変更
+# ===== 後で元に戻す場合はこの1行をCONFIG_FILE = "config_data.json"に戻す =====
+CONFIG_FILE = os.path.join("data", "config_store.json")
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
@@ -16,15 +18,37 @@ class ConfigManager:
     # 設定ロード/保存
     # ------------------------
     def load_config(self):
+        # dataフォルダがなければ作成
+        os.makedirs("data", exist_ok=True)
+
         if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                self.config = json.load(f)
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    self.config = json.load(f)
+                print(f"[LOAD] {CONFIG_FILE} 読み込み成功")
+            except Exception as e:
+                print(f"[ERROR] 設定ファイルの読み込み失敗: {e}")
+                self.config = {"server_pairs": []}
         else:
             self.config = {"server_pairs": []}
+            self.save_config()
+            print(f"[INIT] {CONFIG_FILE} 新規作成")
 
     def save_config(self):
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, indent=2, ensure_ascii=False)
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            print(f"[SAVE] {CONFIG_FILE} 保存完了")
+        except Exception as e:
+            print(f"[ERROR] 保存中にエラー: {e}")
+
+    # ------------------------
+    # ファイルリセット（後で安全に復旧可能）
+    # ------------------------
+    def reset_config(self):
+        self.config = {"server_pairs": []}
+        self.save_config()
+        print(f"[RESET] {CONFIG_FILE} を初期化しました。")
 
     # ------------------------
     # サーバーペア取得
@@ -62,6 +86,7 @@ class ConfigManager:
     def register_commands(self):
         bot = self.bot
 
+        # ---------------- adomin ----------------
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             guild_id = ctx.guild.id
@@ -82,6 +107,7 @@ class ConfigManager:
                 f"✅ このサーバーを B サーバーに設定しました。"
             )
 
+        # ---------------- set_server ----------------
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, server_a_id: int):
             guild_b_id = ctx.guild.id
@@ -115,6 +141,7 @@ class ConfigManager:
                 if isinstance(ch, discord.TextChannel):
                     new_ch = await bot_guild_b.create_text_channel(name=ch.name)
                     mapping[str(ch.id)] = new_ch.id
+
             pair["CHANNEL_MAPPING"]["A_TO_B"] = mapping
             self.save_config()
             await ctx.send(
