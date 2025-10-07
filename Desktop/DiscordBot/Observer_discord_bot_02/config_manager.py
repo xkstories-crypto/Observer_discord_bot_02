@@ -16,7 +16,9 @@ class ConfigManager:
 
         # Google Drive 認証（サービスアカウント）
         self.gauth = GoogleAuth()
-        self.gauth.ServiceAuth(filename="service_account.json")
+        # Renderではsettings.yamlを作るかservice_account.jsonを直接指定
+        # ここではservice_account.jsonを直接指定する場合
+        self.gauth.LoadServiceConfigFile("settings.yaml")
         self.drive = GoogleDrive(self.gauth)
 
         self.load_config()
@@ -102,9 +104,11 @@ class ConfigManager:
             }
             self.config["server_pairs"].append(new_pair)
 
+            # デバッグ用チャンネル作成
             debug_ch = await ctx.guild.create_text_channel("debug-channel")
             new_pair["DEBUG_CHANNEL"] = debug_ch.id
 
+            # VCカテゴリ作成
             vc_category = await ctx.guild.create_category("VCカテゴリ")
             vc_channel = await ctx.guild.create_voice_channel("VC-ボイス", category=vc_category)
             vc_text_channel = await ctx.guild.create_text_channel("VC-チャット", category=vc_category)
