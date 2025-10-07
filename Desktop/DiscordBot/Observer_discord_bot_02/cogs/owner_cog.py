@@ -12,13 +12,10 @@ class OwnerCog(commands.Cog):
     def admin_only(self):
         async def predicate(ctx):
             conf = self.config_manager.get_server_config(ctx.guild.id)
-            await ctx.send(f"[DEBUG] admin_only: conf={conf}")
             if not conf:
                 await ctx.send("[DEBUG] admin_only: configがNoneです")
                 return False
-            admin_ids = conf.get("ADMIN_IDS", [])
-            await ctx.send(f"[DEBUG] admin_only: ADMIN_IDS={admin_ids}, author_id={ctx.author.id}")
-            return ctx.author.id in admin_ids
+            return ctx.author.id in conf.get("ADMIN_IDS", [])
         return commands.check(predicate)
 
     # ---------- Bot停止 ----------
@@ -37,7 +34,7 @@ class OwnerCog(commands.Cog):
             await ctx.send("[DEBUG] show_config: configがNoneです")
             return
 
-        # JSON全体を文字列化（長い場合は1900文字で省略）
+        # JSON全体を表示（長い場合は省略）
         data_str = json.dumps(conf, indent=2, ensure_ascii=False)
         if len(data_str) > 1900:
             data_str = data_str[:1900] + "..."
@@ -55,20 +52,16 @@ class OwnerCog(commands.Cog):
         guild = ctx.guild
         lines = [
             f"Server ({guild.id}): {guild.name}",
-            f"A_ID: {conf.get('A_ID')}",
-            f"B_ID: {conf.get('B_ID')}",
+            f"SERVER_A_ID: {conf.get('A_ID')}",
+            f"SERVER_B_ID: {conf.get('B_ID')}",
             "CHANNEL_MAPPING:"
         ]
-        mapping = conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {})
-        if not mapping:
-            lines.append("  (まだチャンネルマッピングはありません)")
-        else:
-            for src_id, dest_id in mapping.items():
-                src_ch = self.bot.get_channel(int(src_id))
-                dest_ch = self.bot.get_channel(dest_id)
-                lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
 
-        # 管理者表示
+        for src_id, dest_id in conf.get("CHANNEL_MAPPING", {}).get("A_TO_B", {}).items():
+            src_ch = self.bot.get_channel(int(src_id))
+            dest_ch = self.bot.get_channel(dest_id)
+            lines.append(f"  {src_id} → {dest_id} | src: {getattr(src_ch, 'name', '不明')}, dest: {getattr(dest_ch, 'name', '不明')}")
+
         lines.append("ADMIN_IDS:")
         for aid in conf.get("ADMIN_IDS", []):
             user = self.bot.get_user(aid)
@@ -81,15 +74,7 @@ class OwnerCog(commands.Cog):
         lines.append(f"OTHER_CHANNEL: {conf.get('OTHER_CHANNEL')}")
         lines.append(f"READ_USERS: {conf.get('READ_USERS')}")
 
-        # 文字列化して送信（長すぎる場合は分割）
-        msg = "🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```"
-        if len(msg) > 1900:
-            # 適当に分割して送る
-            chunks = [msg[i:i+1900] for i in range(0, len(msg), 1900)]
-            for c in chunks:
-                await ctx.send(c)
-        else:
-            await ctx.send(msg)
+        await ctx.send("🧩 設定情報:\n```\n" + "\n".join(lines) + "\n```")
 
 # ---------- Cogセットアップ ----------
 async def setup(bot: commands.Bot):
