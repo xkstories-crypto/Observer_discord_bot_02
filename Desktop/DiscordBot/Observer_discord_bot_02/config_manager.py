@@ -17,12 +17,18 @@ class ConfigManager:
         if not service_json_env:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
         
-        # Render 用: 改行文字を復元
-        service_json_env = os.getenv("SERVICE_ACCOUNT_JSON")
-        print(repr(service_json_env)[:200])
+        # 1. 空白・自然改行をすべて削除
+        cleaned = "".join(service_json_env.split())
 
-        # JSON を dict に変換
-        sa_info = json.loads(service_json_env)
+        # 2. \n または \\n を改行に変換
+        cleaned = cleaned.replace("\\n", "\n")
+
+        # 3. dict に変換
+        try:
+            sa_info = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            print("[ERROR] JSON 解析失敗:", e)
+            raise
 
         # ----------- Google Drive 認証処理 -------------
         self.gauth = GoogleAuth()
