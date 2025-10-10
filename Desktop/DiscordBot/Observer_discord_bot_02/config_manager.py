@@ -7,7 +7,6 @@ from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 
-
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
@@ -18,13 +17,16 @@ class ConfigManager:
         if not service_json_env:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
         
-        sa_info = json.loads(service_json_env)  # dict に変換
+        # Render 用: 改行文字を復元
+        service_json_env = service_json_env.replace("\\n", "\n")
+
+        # JSON を dict に変換
+        sa_info = json.loads(service_json_env)
 
         # ----------- Google Drive 認証処理 -------------
         self.gauth = GoogleAuth()
         scope = ["https://www.googleapis.com/auth/drive"]
         self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scopes=scope)
-        # ServiceAuth() は呼ばない
         self.drive = GoogleDrive(self.gauth)
 
         # ----------- 設定ロード -------------
@@ -55,10 +57,13 @@ class ConfigManager:
             self.config = data
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
-        file = self.drive.CreateFile({"id": self.drive_file_id})
-        file.SetContentFile(CONFIG_LOCAL_PATH)
-        file.Upload()
-        print("[SAVE] Google Drive に設定をアップロードしました")
+        try:
+            file = self.drive.CreateFile({"id": self.drive_file_id})
+            file.SetContentFile(CONFIG_LOCAL_PATH)
+            file.Upload()
+            print("[SAVE] Google Drive に設定をアップロードしました")
+        except Exception as e:
+            print(f"[ERROR] Google Drive へのアップロード失敗: {e}")
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
