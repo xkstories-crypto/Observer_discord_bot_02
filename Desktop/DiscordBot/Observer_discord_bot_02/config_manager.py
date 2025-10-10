@@ -2,41 +2,37 @@ import os
 import json
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
+from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
+
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
         self.drive_file_id = drive_file_id
 
-        # ----------- サービスアカウント認証情報 ------------
+        # ----------- サービスアカウント認証情報 -------------
         service_json_env = os.getenv("SERVICE_ACCOUNT_JSON")
         if not service_json_env:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
+        
+        sa_info = json.loads(service_json_env)  # dict に変換
 
-        os.makedirs("data", exist_ok=True)
-        self.service_json_path = "service_account.json"
-        with open(self.service_json_path, "w", encoding="utf-8") as f:
-            f.write(service_json_env)
-
-        # ----------- Google Drive 認証処理 ------------
+        # ----------- Google Drive 認証処理 -------------
         self.gauth = GoogleAuth()
-        self.gauth.settings = {
-            "client_config_backend": "service",
-            "service_config": {
-                "client_json_file_path": self.service_json_path
-            }
-        }
-        self.gauth.ServiceAuth()  # ← これが正しい呼び方
+        scope = ["https://www.googleapis.com/auth/drive"]
+        self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scopes=scope)
+        # ServiceAuth() は呼ばない
         self.drive = GoogleDrive(self.gauth)
 
-        # ----------- 設定ロード ------------
+        # ----------- 設定ロード -------------
+        os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
         self.register_commands()
 
-    # ----------------------------------------------------
+    # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
         """Google Driveから設定を読み込む"""
         try:
@@ -52,7 +48,7 @@ class ConfigManager:
             self.save_config(default)
             return default
 
-    # ----------------------------------------------------
+    # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
         """Google Driveに設定を保存"""
         if data:
@@ -64,7 +60,7 @@ class ConfigManager:
         file.Upload()
         print("[SAVE] Google Drive に設定をアップロードしました")
 
-    # ----------------------------------------------------
+    # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
@@ -75,7 +71,7 @@ class ConfigManager:
                 return pair
         return None
 
-    # ----------------------------------------------------
+    # ---------------------------- コマンド登録 ----------------------------
     def register_commands(self):
         bot = self.bot
 
