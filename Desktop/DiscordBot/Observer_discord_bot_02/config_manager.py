@@ -17,13 +17,10 @@ class ConfigManager:
         if not service_json_env:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
         
-        # 1. 空白・自然改行をすべて削除
-        cleaned = "".join(service_json_env.split())
+        # 改行を復元 (\n に変換)
+        cleaned = service_json_env.replace("\\n", "\n")
 
-        # 2. \n または \\n を改行に変換
-        cleaned = cleaned.replace("\\n", "\n")
-
-        # 3. dict に変換
+        # dict に変換
         try:
             sa_info = json.loads(cleaned)
         except json.JSONDecodeError as e:
