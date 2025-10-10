@@ -18,7 +18,8 @@ class ConfigManager:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
         
         # Render 用: 改行文字を復元
-        service_json_env = service_json_env.replace("\\n", "\n")
+        service_json_env = os.getenv("SERVICE_ACCOUNT_JSON")
+        print(repr(service_json_env)[:200])
 
         # JSON を dict に変換
         sa_info = json.loads(service_json_env)
