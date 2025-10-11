@@ -13,33 +13,41 @@ class ConfigManager:
         self.drive_file_id = drive_file_id
 
         # ----------- サービスアカウント認証情報 -------------
-        service_json_env = os.getenv("SERVICE_ACCOUNT_JSON")
-        if not service_json_env:
-            raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
+        # 改行ごとに分割された環境変数から鍵を復元
+        key_lines = []
+        i = 1
+        while True:
+            env_name = f"SERVICE_ACCOUNT_KEY_{i}"
+            line = os.getenv(env_name)
+            if line is None:
+                break
+            key_lines.append(line)
+            i += 1
 
-        # 追加: RAW で環境変数を確認
-        print("[DEBUG] RAW SERVICE_ACCOUNT_JSON:")
-        print(service_json_env[:500])  # 最初の500文字だけ表示
+        if not key_lines:
+            raise ValueError("SERVICE_ACCOUNT_KEY_1 以降の環境変数が設定されていません。")
 
-        # 追加: Python 内部での解釈を確認
-        print("[DEBUG] REPR SERVICE_ACCOUNT_JSON:")
-        print(repr(service_json_env[:500]))  # \n や \\ を可視化
+        private_key = "\n".join(key_lines)
 
-        # 改行を復元 (\n に変換)
-        cleaned = service_json_env.replace("\\n", "\n")
-
-        # dict に変換
-        try:
-            sa_info = json.loads(cleaned)
-        except json.JSONDecodeError as e:
-            print("[ERROR] JSON 解析失敗:", e)
-            print("[DEBUG RAW ENV]", repr(service_json_env[:300]))
-            raise
+        # ここで他の情報と結合
+        service_json = {
+            "type": "service_account",
+            "project_id": "discord-bot-project-474420",
+            "private_key_id": "e719591d1b99197d5eb0cede954efcb1caf67e7a",
+            "private_key": private_key,
+            "client_email": "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
+            "client_id": "106826889279899095896",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
+            "universe_domain": "googleapis.com"
+        }
 
         # ----------- Google Drive 認証処理 -------------
         self.gauth = GoogleAuth()
         scope = ["https://www.googleapis.com/auth/drive"]
-        self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scopes=scope)
+        self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
         self.drive = GoogleDrive(self.gauth)
 
         # ----------- 設定ロード -------------
