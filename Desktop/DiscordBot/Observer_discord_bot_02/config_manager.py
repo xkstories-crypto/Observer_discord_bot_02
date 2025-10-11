@@ -198,7 +198,7 @@ class ConfigManager:
     def register_drive_show_command(self):
         bot = self.bot
 
-        @bot.command(name="show_config")
+        @bot.command(name="show")
         async def show_config(ctx: commands.Context):
             if not self.is_admin(ctx.guild.id, ctx.author.id):
                 await ctx.send("❌ 管理者ではありません。")
