@@ -13,7 +13,6 @@ class ConfigManager:
         self.drive_file_id = drive_file_id
 
         # ----------- サービスアカウント認証情報 -------------
-        # 改行ごとに分割された環境変数から鍵を復元
         key_lines = []
         i = 1
         while True:
@@ -53,11 +52,13 @@ class ConfigManager:
         # ----------- 設定ロード -------------
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
+
+        # コマンド登録
         self.register_commands()
+        self.register_sa_check_command()
 
     # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
-        """Google Driveから設定を読み込む"""
         try:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.GetContentFile(CONFIG_LOCAL_PATH)
@@ -73,7 +74,6 @@ class ConfigManager:
 
     # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
-        """Google Driveに設定を保存"""
         if data:
             self.config = data
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
@@ -151,3 +151,45 @@ class ConfigManager:
                 await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定しました。")
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
+
+    # ---------------------------- 管理者限定 SA チェックコマンド ----------------------------
+    def register_sa_check_command(self):
+        bot = self.bot
+
+        @bot.command(name="check_sa")
+        async def check_sa(ctx: commands.Context):
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
+            key_lines = []
+            i = 1
+            while True:
+                env_name = f"SERVICE_KEY_LINE_{i}"
+                line = os.getenv(env_name)
+                if line is None:
+                    break
+                key_lines.append(line)
+                i += 1
+
+            if not key_lines:
+                await ctx.send("❌ SERVICE_KEY_LINE が設定されていません。")
+                return
+
+            private_key = "\n".join(key_lines)  # 使用は内部のみ
+
+            # 表示用 JSON (private_key 省略)
+            service_json = {
+                "type": "service_account",
+                "project_id": "discord-bot-project-474420",
+                "private_key_id": "e719591d1b99197d5eb0cede954efcb1caf67e7a",
+                "client_email": "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
+                "client_id": "106826889279899095896",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
+                "universe_domain": "googleapis.com"
+            }
+
+            await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
