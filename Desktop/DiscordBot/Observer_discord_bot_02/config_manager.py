@@ -25,6 +25,7 @@ class ConfigManager:
             sa_info = json.loads(cleaned)
         except json.JSONDecodeError as e:
             print("[ERROR] JSON 解析失敗:", e)
+            print("[DEBUG RAW ENV]", repr(service_json_env[:300]))
             raise
 
         # ----------- Google Drive 認証処理 -------------
