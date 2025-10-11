@@ -16,7 +16,15 @@ class ConfigManager:
         service_json_env = os.getenv("SERVICE_ACCOUNT_JSON")
         if not service_json_env:
             raise ValueError("SERVICE_ACCOUNT_JSON が環境変数に設定されていません。")
-        
+
+        # 追加: RAW で環境変数を確認
+        print("[DEBUG] RAW SERVICE_ACCOUNT_JSON:")
+        print(service_json_env[:500])  # 最初の500文字だけ表示
+
+        # 追加: Python 内部での解釈を確認
+        print("[DEBUG] REPR SERVICE_ACCOUNT_JSON:")
+        print(repr(service_json_env[:500]))  # \n や \\ を可視化
+
         # 改行を復元 (\n に変換)
         cleaned = service_json_env.replace("\\n", "\n")
 
