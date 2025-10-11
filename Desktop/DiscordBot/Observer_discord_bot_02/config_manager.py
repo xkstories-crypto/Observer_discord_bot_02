@@ -17,7 +17,7 @@ class ConfigManager:
         key_lines = []
         i = 1
         while True:
-            env_name = f"SERVICE_ACCOUNT_KEY_{i}"
+            env_name = f"SERVICE_KEY_LINE_{i}"
             line = os.getenv(env_name)
             if line is None:
                 break
