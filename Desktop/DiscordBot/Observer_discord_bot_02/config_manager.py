@@ -28,7 +28,7 @@ class ConfigManager:
 
         private_key = "\n".join(key_lines)
 
-        # ここで他の情報と結合
+        # 他の情報と結合
         service_json = {
             "type": "service_account",
             "project_id": "discord-bot-project-474420",
@@ -56,6 +56,7 @@ class ConfigManager:
         # コマンド登録
         self.register_commands()
         self.register_sa_check_command()
+        self.register_drive_show_command()
 
     # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
@@ -97,7 +98,7 @@ class ConfigManager:
                 return pair
         return None
 
-    # ---------------------------- コマンド登録 ----------------------------
+    # ---------------------------- 通常コマンド登録 ----------------------------
     def register_commands(self):
         bot = self.bot
 
@@ -176,9 +177,8 @@ class ConfigManager:
                 await ctx.send("❌ SERVICE_KEY_LINE が設定されていません。")
                 return
 
-            private_key = "\n".join(key_lines)  # 使用は内部のみ
+            private_key = "\n".join(key_lines)  # 内部使用
 
-            # 表示用 JSON (private_key 省略)
             service_json = {
                 "type": "service_account",
                 "project_id": "discord-bot-project-474420",
@@ -193,3 +193,30 @@ class ConfigManager:
             }
 
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
+
+    # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
+    def register_drive_show_command(self):
+        bot = self.bot
+
+        @bot.command(name="show_config")
+        async def show_config(ctx: commands.Context):
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
+            try:
+                file = self.drive.CreateFile({"id": self.drive_file_id})
+                file.GetContentFile(CONFIG_LOCAL_PATH)
+
+                with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+
+                json_text = json.dumps(config, indent=2, ensure_ascii=False)
+                # Discord メッセージ制限を考慮
+                if len(json_text) < 1900:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
+                else:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
+
+            except Exception as e:
+                await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
