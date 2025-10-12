@@ -14,7 +14,7 @@ class ConfigManager:
 
         print("[DEBUG] ConfigManager 初期化開始")
 
-        # ---------------- サービスアカウント鍵取得 ----------------
+        # ----------- サービスアカウント認証情報 -------------
         key_lines = []
         i = 1
         while True:
@@ -30,11 +30,11 @@ class ConfigManager:
         print(f"[DEBUG] {len(key_lines)} 行の鍵を取得")
 
         private_key = "\n".join(key_lines)
-        print("[DEBUG] private_key startswith:", private_key.startswith("-----BEGIN PRIVATE KEY-----"))
-        print("[DEBUG] private_key endswith:", private_key.endswith("-----END PRIVATE KEY-----"))
-        print("[DEBUG] private_key length:", len(private_key))
+        print(f"[DEBUG] private_key length: {len(private_key)}")
+        print(f"[DEBUG] private_key startswith: {private_key.startswith('-----BEGIN PRIVATE KEY-----')}")
+        print(f"[DEBUG] private_key endswith: {private_key.endswith('-----END PRIVATE KEY-----')}")
 
-        # ---------------- サービスアカウント JSON ----------------
+        # 他の情報と結合
         service_json = {
             "type": "service_account",
             "project_id": "discord-bot-project-474420",
@@ -49,46 +49,44 @@ class ConfigManager:
             "universe_domain": "googleapis.com"
         }
 
-        # ---------------- Google Drive 認証 ----------------
+        # ----------- Google Drive 認証処理 -------------
         try:
-            print("[DEBUG] GoogleAuth 認証開始")
             self.gauth = GoogleAuth()
             scope = ["https://www.googleapis.com/auth/drive"]
             self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
             self.drive = GoogleDrive(self.gauth)
             print("[DEBUG] GoogleAuth 認証成功")
         except Exception as e:
-            print("[ERROR] GoogleAuth 認証失敗:", e)
+            print(f"[ERROR] GoogleAuth 認証失敗: {e}")
             raise
 
-        # ---------------- 設定ロード ----------------
+        # ----------- 設定ロード -------------
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
-        # ---------------- コマンド登録 ----------------
+        # ----------- コマンド登録 -------------
         self.register_commands()
         self.register_sa_check_command()
         self.register_drive_show_command()
+        print("[DEBUG] ConfigManager 初期化完了")
 
-    # ---------------- 設定ロード ----------------
+    # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
         try:
             print(f"[DEBUG] Google Drive からファイル取得開始: {self.drive_file_id}")
             file = self.drive.CreateFile({"id": self.drive_file_id})
-            file.FetchMetadata()
-            print(f"[DEBUG] ファイル取得成功: {file['title']}")
             file.GetContentFile(CONFIG_LOCAL_PATH)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            print("[DEBUG] 設定読み込み成功")
+            print("[LOAD] Google Drive から設定を読み込みました")
             return config
         except Exception as e:
-            print(f"[ERROR] Google Drive 読み込み失敗: {e}")
+            print(f"[WARN] Google Drive 読み込み失敗: {e}")
             default = {"server_pairs": []}
             self.save_config(default)
             return default
 
-    # ---------------- 設定保存 ----------------
+    # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
         if data:
             self.config = data
@@ -98,31 +96,30 @@ class ConfigManager:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.SetContentFile(CONFIG_LOCAL_PATH)
             file.Upload()
-            print("[DEBUG] Google Drive に設定をアップロード成功")
+            print("[SAVE] Google Drive に設定をアップロードしました")
         except Exception as e:
             print(f"[ERROR] Google Drive へのアップロード失敗: {e}")
 
-    # ---------------- 管理者チェック ----------------
+    # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
     def get_pair_by_guild(self, guild_id):
-        for pair in self.config.get("server_pairs", []):
+        for pair in self.config["server_pairs"]:
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
 
-    # ---------------- 通常コマンド登録 ----------------
+    # ---------------------------- 通常コマンド登録 ----------------------------
     def register_commands(self):
         bot = self.bot
+        print("[DEBUG] 通常コマンド登録開始")
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
-            print(f"[DEBUG] adomin コマンド呼び出し by {ctx.author.id}")
             guild_id = ctx.guild.id
             author_id = ctx.author.id
-
             pair = self.get_pair_by_guild(guild_id)
             if not pair:
                 pair = {
@@ -151,7 +148,6 @@ class ConfigManager:
 
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, target_guild_id: int):
-            print(f"[DEBUG] set_server コマンド呼び出し by {ctx.author.id}")
             guild_id = ctx.guild.id
             pair = self.get_pair_by_guild(guild_id)
 
@@ -170,13 +166,15 @@ class ConfigManager:
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
 
-    # ---------------- 管理者限定 SA チェック ----------------
+        print("[DEBUG] 通常コマンド登録完了")
+
+    # ---------------------------- 管理者限定 SA チェックコマンド ----------------------------
     def register_sa_check_command(self):
         bot = self.bot
+        print("[DEBUG] SA チェックコマンド登録開始")
 
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            print(f"[DEBUG] check_sa コマンド呼び出し by {ctx.author.id}")
             if not self.is_admin(ctx.guild.id, ctx.author.id):
                 await ctx.send("❌ 管理者ではありません。")
                 return
@@ -212,6 +210,28 @@ class ConfigManager:
 
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
-    # ---------------- Google Drive JSON 表示 ----------------
+        print("[DEBUG] SA チェックコマンド登録完了")
+
+    # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
     def register_drive_show_command(self):
-        bot
+        bot = self.bot  # ← ここが重要
+        print("[DEBUG] Google Drive JSON 表示コマンド登録開始")
+
+        @bot.command(name="show")
+        async def show_config(ctx: commands.Context):
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
+            try:
+                print(f"[DEBUG] Google Drive からファイル取得開始: {self.drive_file_id}")
+                file = self.drive.CreateFile({"id": self.drive_file_id})
+                file.GetContentFile(CONFIG_LOCAL_PATH)
+                print(f"[DEBUG] ファイル取得成功: {CONFIG_LOCAL_PATH}")
+
+                with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+
+                json_text = json.dumps(config, indent=2, ensure_ascii=False)
+                if len(json_text) < 1900:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json
