@@ -234,4 +234,5 @@ class ConfigManager:
 
                 json_text = json.dumps(config, indent=2, ensure_ascii=False)
                 if len(json_text) < 1900:
-                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
+
