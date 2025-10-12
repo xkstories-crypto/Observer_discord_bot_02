@@ -2,10 +2,12 @@ import os
 import json
 import dropbox
 from discord.ext import commands
+import discord
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 DROPBOX_PATH = "/config_store.json"
 DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")
+
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
@@ -19,7 +21,9 @@ class ConfigManager:
         self.register_commands()
         self.register_drive_show_command()
 
-    # 設定ロード
+    # ------------------------
+    # 設定ロード/保存
+    # ------------------------
     def load_config(self):
         try:
             metadata, res = self.dbx.files_download(self.DROPBOX_PATH)
@@ -35,7 +39,6 @@ class ConfigManager:
             self.save_config(default)
             return default
 
-    # 設定保存
     def save_config(self, data=None):
         if data:
             self.config = data
@@ -47,19 +50,22 @@ class ConfigManager:
         except Exception as e:
             print(f"[WARN] Dropbox へのアップロード失敗: {e}")
 
-    # 管理者チェック
+    # ------------------------
+    # 管理者チェック・ペア取得
+    # ------------------------
     def is_admin(self, guild_id, user_id):
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
-    # ギルドIDからペア取得
     def get_pair_by_guild(self, guild_id):
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
 
+    # ------------------------
     # コマンド登録
+    # ------------------------
     def register_commands(self):
         bot = self.bot
 
@@ -125,13 +131,44 @@ class ConfigManager:
                 else:
                     await ctx.send(f"⚠️ {field} はすでに設定されています: {pair[field]}")
 
-            # マッピング未設定分だけ作成
-            if not pair.get("CHANNEL_MAPPING"):
-                pair["CHANNEL_MAPPING"] = {"A_TO_B": {}}
-            elif "A_TO_B" not in pair["CHANNEL_MAPPING"]:
-                pair["CHANNEL_MAPPING"]["A_TO_B"] = {}
+            # Dropbox から読み込み
+            try:
+                metadata, res = self.dbx.files_download(self.DROPBOX_PATH)
+                dropbox_config = json.loads(res.content.decode("utf-8"))
+            except Exception as e:
+                await ctx.send(f"⚠️ Dropbox 読み込み失敗: {e}")
+                return
 
-            self.save_config()
+            # ペア取得 or 作成
+            dropbox_pair = next((p for p in dropbox_config.get("server_pairs", [])
+                                 if p.get("A_ID") == target_guild_id and p.get("B_ID") == guild_id), None)
+            if not dropbox_pair:
+                dropbox_pair = {
+                    "A_ID": target_guild_id,
+                    "B_ID": guild_id,
+                    "CHANNEL_MAPPING": {"A_TO_B": {}},
+                    "ADMIN_IDS": pair.get("ADMIN_IDS", []),
+                    "DEBUG_CHANNEL": pair.get("DEBUG_CHANNEL"),
+                    "VC_LOG_CHANNEL": pair.get("VC_LOG_CHANNEL"),
+                    "AUDIT_LOG_CHANNEL": pair.get("AUDIT_LOG_CHANNEL"),
+                    "OTHER_CHANNEL": pair.get("OTHER_CHANNEL"),
+                    "READ_USERS": pair.get("READ_USERS", [])
+                }
+                dropbox_config["server_pairs"].append(dropbox_pair)
+
+            # マッピング未設定分だけ作成
+            if not dropbox_pair.get("CHANNEL_MAPPING"):
+                dropbox_pair["CHANNEL_MAPPING"] = {"A_TO_B": {}}
+            elif "A_TO_B" not in dropbox_pair["CHANNEL_MAPPING"]:
+                dropbox_pair["CHANNEL_MAPPING"]["A_TO_B"] = {}
+
+            self.save_config()  # ローカル保存
+            # Dropbox 保存
+            with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
+                json.dump(dropbox_config, f, indent=2, ensure_ascii=False)
+            with open(CONFIG_LOCAL_PATH, "rb") as f:
+                self.dbx.files_upload(f.read(), DROPBOX_PATH, mode=dropbox.files.WriteMode.overwrite)
+
             await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定し、未設定のチャンネルとマッピングを作成しました。")
 
         # 個別チャンネル設定
@@ -166,7 +203,9 @@ class ConfigManager:
             self.save_config()
             await ctx.send(f"✅ {field_name} を {channel_id} に設定しました。")
 
+    # ------------------------
     # Dropbox JSON 表示
+    # ------------------------
     def register_drive_show_command(self):
         bot = self.bot
 
