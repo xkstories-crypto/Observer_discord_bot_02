@@ -1,4 +1,3 @@
 discord.py>=2.3.0
 python-dotenv>=1.0.0
-google-cloud-texttospeech
-pydrive2
+dropbox>=12.0.0
