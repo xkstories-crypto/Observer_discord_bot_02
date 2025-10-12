@@ -4,20 +4,18 @@ import dropbox
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
-DROPBOX_PATH = "/config_store.json"  # Dropbox 内の保存場所
-DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")  # 環境変数からトークン取得
+DROPBOX_PATH = "/config_store.json"
+DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.DROPBOX_PATH = DROPBOX_PATH  # インスタンス属性として保持
+        self.DROPBOX_PATH = DROPBOX_PATH
         self.dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
-        # 設定ロード
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
-        # コマンド登録
         self.register_commands()
         self.register_drive_show_command()
 
@@ -61,10 +59,11 @@ class ConfigManager:
                 return pair
         return None
 
-    # 通常コマンド
+    # コマンド登録
     def register_commands(self):
         bot = self.bot
 
+        # 管理者登録
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             guild_id = ctx.guild.id
@@ -95,6 +94,7 @@ class ConfigManager:
             self.save_config()
             await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
 
+        # 対応サーバー設定＆未設定チャンネル・マッピング作成
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, target_guild_id: int):
             guild_id = ctx.guild.id
@@ -115,7 +115,7 @@ class ConfigManager:
             # 対応サーバー設定
             pair["A_ID"] = target_guild_id
 
-            # チャンネル初期化
+            # チャンネル未設定分だけ初期化
             for field, default in [("DEBUG_CHANNEL", ctx.channel.id),
                                    ("VC_LOG_CHANNEL", None),
                                    ("AUDIT_LOG_CHANNEL", None),
@@ -125,23 +125,18 @@ class ConfigManager:
                 else:
                     await ctx.send(f"⚠️ {field} はすでに設定されています: {pair[field]}")
 
-            # マッピング初期化（A→B）
+            # マッピング未設定分だけ作成
             if not pair.get("CHANNEL_MAPPING"):
                 pair["CHANNEL_MAPPING"] = {"A_TO_B": {}}
             elif "A_TO_B" not in pair["CHANNEL_MAPPING"]:
                 pair["CHANNEL_MAPPING"]["A_TO_B"] = {}
 
             self.save_config()
-            await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定し、チャンネルとマッピングを初期化しました。")
+            await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定し、未設定のチャンネルとマッピングを作成しました。")
 
+        # 個別チャンネル設定
         @bot.command(name="set_channel")
         async def set_channel(ctx: commands.Context, channel_type: str, channel_id: int = None):
-            """
-            channel_type:
-                DEBUG, VC_LOG, AUDIT, OTHER
-            channel_id:
-                省略した場合は ctx.channel.id が使われる
-            """
             guild_id = ctx.guild.id
             pair = self.get_pair_by_guild(guild_id)
             if not pair:
@@ -167,15 +162,11 @@ class ConfigManager:
                 await ctx.send("⚠️ channel_type は DEBUG, VC_LOG, AUDIT, OTHER のいずれかにしてください。")
                 return
 
-            if pair.get(field_name):
-                await ctx.send(f"⚠️ {field_name} はすでに設定されています: {pair[field_name]}")
-                return
-
             pair[field_name] = channel_id
             self.save_config()
             await ctx.send(f"✅ {field_name} を {channel_id} に設定しました。")
 
-    # Dropbox JSON 表示コマンド
+    # Dropbox JSON 表示
     def register_drive_show_command(self):
         bot = self.bot
 
