@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 import traceback
 import asyncio
-from config_manager import ConfigManager
+from config_manager import ConfigManager  # Dropbox版ConfigManagerを使用
 
 # ---------- 環境変数からトークン取得 ----------
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -15,11 +15,6 @@ if not TOKEN:
 TOKEN = TOKEN.strip()
 print(f"Raw token repr: {repr(TOKEN)}")
 print(f"Token length: {len(TOKEN)}")
-
-# ---------- Google Drive ファイルID ----------
-DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")
-if not DRIVE_FILE_ID:
-    raise ValueError("DRIVE_FILE_ID が取得できません。")
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -47,8 +42,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------- 非同期でBot起動 ----------
 async def main():
     async with bot:
-        # ConfigManager 初期化（環境変数から JSON をロード）
-        config_manager = ConfigManager(bot, DRIVE_FILE_ID)
+        # Dropbox対応 ConfigManager 初期化
+        config_manager = ConfigManager(bot)  # Dropbox版は DRIVE_FILE_ID 不要
         bot.config_manager = config_manager
 
         # Cog のロード
