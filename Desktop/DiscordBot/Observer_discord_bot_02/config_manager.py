@@ -4,7 +4,7 @@ import dropbox
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
-DROPBOX_PATH = "/main_version_config.json"  # Dropbox 内の保存場所
+DROPBOX_PATH = "/config_store.json"  # Dropbox 内の保存場所
 DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")  # 環境変数からトークン取得
 
 class ConfigManager:
