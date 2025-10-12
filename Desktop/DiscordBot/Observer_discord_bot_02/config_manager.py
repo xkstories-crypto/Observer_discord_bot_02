@@ -54,6 +54,7 @@ class ConfigManager:
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
+    # ギルドIDからペア取得
     def get_pair_by_guild(self, guild_id):
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
@@ -107,12 +108,31 @@ class ConfigManager:
                 await ctx.send("❌ 管理者権限がありません。")
                 return
 
-            if guild_id == pair.get("B_ID"):
-                pair["A_ID"] = target_guild_id
-                self.save_config()
-                await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定しました。")
-            else:
+            if guild_id != pair.get("B_ID"):
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
+                return
+
+            # 対応サーバー設定
+            pair["A_ID"] = target_guild_id
+
+            # チャンネル初期化
+            for field, default in [("DEBUG_CHANNEL", ctx.channel.id),
+                                   ("VC_LOG_CHANNEL", None),
+                                   ("AUDIT_LOG_CHANNEL", None),
+                                   ("OTHER_CHANNEL", None)]:
+                if pair.get(field) is None:
+                    pair[field] = default
+                else:
+                    await ctx.send(f"⚠️ {field} はすでに設定されています: {pair[field]}")
+
+            # マッピング初期化（A→B）
+            if not pair.get("CHANNEL_MAPPING"):
+                pair["CHANNEL_MAPPING"] = {"A_TO_B": {}}
+            elif "A_TO_B" not in pair["CHANNEL_MAPPING"]:
+                pair["CHANNEL_MAPPING"]["A_TO_B"] = {}
+
+            self.save_config()
+            await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定し、チャンネルとマッピングを初期化しました。")
 
         @bot.command(name="set_channel")
         async def set_channel(ctx: commands.Context, channel_type: str, channel_id: int = None):
