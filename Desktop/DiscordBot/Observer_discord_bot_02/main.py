@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 import traceback
 import asyncio
+import json
 from config_manager import ConfigManager  # Dropbox版ConfigManagerを使用
 
 # ---------- 環境変数からトークン取得 ----------
@@ -60,6 +61,49 @@ async def main():
             except Exception as e:
                 print(f"[❌] Failed to load {cog_path}: {e}")
                 traceback.print_exc()
+
+        # ---------- デバッグ用コマンド追加 ----------
+        @bot.command(name="debug_all_full")
+        async def debug_all_full(ctx: commands.Context):
+            """管理者向け: 現在のConfigManager全データを完全に返す（分割送信）"""
+            try:
+                guild_id = ctx.guild.id
+                author_id = ctx.author.id
+
+                # 管理者チェック
+                if not bot.config_manager.is_admin(guild_id, author_id):
+                    await ctx.send("❌ 管理者ではありません。")
+                    return
+
+                # ローカル config
+                local_config = bot.config_manager.config
+                local_text = json.dumps(local_config, indent=2, ensure_ascii=False)
+
+                # Dropbox 上の config
+                try:
+                    metadata, res = bot.config_manager.dbx.files_download(bot.config_manager.DROPBOX_PATH)
+                    dropbox_config = json.loads(res.content.decode("utf-8"))
+                    dropbox_text = json.dumps(dropbox_config, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    dropbox_text = f"⚠️ Dropbox 読み込み失敗: {e}"
+
+                # Discord 1メッセージの文字数制限に対応して分割
+                CHUNK_SIZE = 1800
+
+                # ローカル設定送信
+                await ctx.send("✅ **ローカル設定**")
+                for i in range(0, len(local_text), CHUNK_SIZE):
+                    await ctx.send(f"```json\n{local_text[i:i+CHUNK_SIZE]}\n```")
+
+                # Dropbox 設定送信
+                await ctx.send("✅ **Dropbox 設定**")
+                for i in range(0, len(dropbox_text), CHUNK_SIZE):
+                    await ctx.send(f"```json\n{dropbox_text[i:i+CHUNK_SIZE]}\n```")
+
+                await ctx.send("✅ 全データ送信完了")
+
+            except Exception as e:
+                await ctx.send(f"⚠️ デバッグ中にエラー発生: {e}")
 
         # Bot 起動時イベント
         @bot.event
