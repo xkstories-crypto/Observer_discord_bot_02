@@ -7,6 +7,7 @@ from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 
+
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
@@ -194,7 +195,6 @@ class ConfigManager:
                 return
 
             private_key = "\n".join(key_lines)
-
             service_json = {
                 "type": "service_account",
                 "project_id": "discord-bot-project-474420",
@@ -209,12 +209,11 @@ class ConfigManager:
             }
 
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
-
         print("[DEBUG] SA チェックコマンド登録完了")
 
     # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
     def register_drive_show_command(self):
-        bot = self.bot  # ← ここが重要
+        bot = self.bot
         print("[DEBUG] Google Drive JSON 表示コマンド登録開始")
 
         @bot.command(name="show")
@@ -235,4 +234,10 @@ class ConfigManager:
                 json_text = json.dumps(config, indent=2, ensure_ascii=False)
                 if len(json_text) < 1900:
                     await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
+                else:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
+                print("[DEBUG] show コマンド実行完了")
 
+            except Exception as e:
+                print(f"[ERROR] JSON 読み込みに失敗: {e}")
+                await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
