@@ -10,7 +10,7 @@ DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")  # 環境変数から�
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.DROPBOX_PATH = DROPBOX_PATH  # 追加：インスタンス属性として保持
+        self.DROPBOX_PATH = DROPBOX_PATH  # インスタンス属性として保持
         self.dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
         # 設定ロード
@@ -19,7 +19,7 @@ class ConfigManager:
 
         # コマンド登録
         self.register_commands()
-        self.register_drive_show_command()  # 名前はそのままでもOK
+        self.register_drive_show_command()
 
     # 設定ロード
     def load_config(self):
@@ -29,12 +29,10 @@ class ConfigManager:
                 f.write(res.content)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            # server_pairs がなければ初期化
             if "server_pairs" not in config:
                 config["server_pairs"] = []
             return config
         except dropbox.exceptions.ApiError:
-            # ファイルがなければデフォルト生成
             default = {"server_pairs": []}
             self.save_config(default)
             return default
@@ -116,6 +114,47 @@ class ConfigManager:
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
 
+        @bot.command(name="set_channel")
+        async def set_channel(ctx: commands.Context, channel_type: str, channel_id: int = None):
+            """
+            channel_type:
+                DEBUG, VC_LOG, AUDIT, OTHER
+            channel_id:
+                省略した場合は ctx.channel.id が使われる
+            """
+            guild_id = ctx.guild.id
+            pair = self.get_pair_by_guild(guild_id)
+            if not pair:
+                await ctx.send("⚠️ サーバーが未登録です。まず !adomin を実行してください。")
+                return
+
+            if not self.is_admin(guild_id, ctx.author.id):
+                await ctx.send("❌ 管理者権限がありません。")
+                return
+
+            if not channel_id:
+                channel_id = ctx.channel.id
+
+            field_map = {
+                "DEBUG": "DEBUG_CHANNEL",
+                "VC_LOG": "VC_LOG_CHANNEL",
+                "AUDIT": "AUDIT_LOG_CHANNEL",
+                "OTHER": "OTHER_CHANNEL"
+            }
+
+            field_name = field_map.get(channel_type.upper())
+            if not field_name:
+                await ctx.send("⚠️ channel_type は DEBUG, VC_LOG, AUDIT, OTHER のいずれかにしてください。")
+                return
+
+            if pair.get(field_name):
+                await ctx.send(f"⚠️ {field_name} はすでに設定されています: {pair[field_name]}")
+                return
+
+            pair[field_name] = channel_id
+            self.save_config()
+            await ctx.send(f"✅ {field_name} を {channel_id} に設定しました。")
+
     # Dropbox JSON 表示コマンド
     def register_drive_show_command(self):
         bot = self.bot
@@ -130,7 +169,6 @@ class ConfigManager:
                 metadata, res = self.dbx.files_download(self.DROPBOX_PATH)
                 config = json.loads(res.content.decode("utf-8"))
 
-                # server_pairs がなければ初期化
                 if "server_pairs" not in config:
                     config["server_pairs"] = []
 
