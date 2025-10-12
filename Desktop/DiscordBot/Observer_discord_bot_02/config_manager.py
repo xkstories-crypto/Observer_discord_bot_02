@@ -10,6 +10,7 @@ DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")  # 環境変数から�
 class ConfigManager:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.DROPBOX_PATH = DROPBOX_PATH  # 追加：インスタンス属性として保持
         self.dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
         # 設定ロード
@@ -23,11 +24,14 @@ class ConfigManager:
     # 設定ロード
     def load_config(self):
         try:
-            metadata, res = self.dbx.files_download(DROPBOX_PATH)
+            metadata, res = self.dbx.files_download(self.DROPBOX_PATH)
             with open(CONFIG_LOCAL_PATH, "wb") as f:
                 f.write(res.content)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
+            # server_pairs がなければ初期化
+            if "server_pairs" not in config:
+                config["server_pairs"] = []
             return config
         except dropbox.exceptions.ApiError:
             # ファイルがなければデフォルト生成
@@ -43,7 +47,7 @@ class ConfigManager:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
         try:
             with open(CONFIG_LOCAL_PATH, "rb") as f:
-                self.dbx.files_upload(f.read(), DROPBOX_PATH, mode=dropbox.files.WriteMode.overwrite)
+                self.dbx.files_upload(f.read(), self.DROPBOX_PATH, mode=dropbox.files.WriteMode.overwrite)
         except Exception as e:
             print(f"[WARN] Dropbox へのアップロード失敗: {e}")
 
@@ -53,7 +57,7 @@ class ConfigManager:
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
     def get_pair_by_guild(self, guild_id):
-        for pair in self.config["server_pairs"]:
+        for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
@@ -123,8 +127,12 @@ class ConfigManager:
                 return
 
             try:
-                metadata, res = self.dbx.files_download(DROPBOX_PATH)
+                metadata, res = self.dbx.files_download(self.DROPBOX_PATH)
                 config = json.loads(res.content.decode("utf-8"))
+
+                # server_pairs がなければ初期化
+                if "server_pairs" not in config:
+                    config["server_pairs"] = []
 
                 json_text = json.dumps(config, indent=2, ensure_ascii=False)
                 if len(json_text) < 1900:
