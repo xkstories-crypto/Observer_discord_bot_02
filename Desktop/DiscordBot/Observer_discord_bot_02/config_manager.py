@@ -1,51 +1,16 @@
 import os
 import json
-import asyncio
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
-from oauth2client.service_account import ServiceAccountCredentials
+import dropbox
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
+DROPBOX_PATH = "/main_version_config.json"  # Dropbox 内の保存場所
+DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")  # 環境変数からトークン取得
 
 class ConfigManager:
-    def __init__(self, bot: commands.Bot, drive_file_id: str):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.drive_file_id = drive_file_id
-
-        # サービスアカウント認証情報
-        key_lines = []
-        i = 1
-        while True:
-            env_name = f"SERVICE_KEY_LINE_{i}"
-            line = os.getenv(env_name)
-            if line is None:
-                break
-            key_lines.append(line)
-            i += 1
-        if not key_lines:
-            raise ValueError("SERVICE_KEY_LINE_1 以降の環境変数が設定されていません。")
-        private_key = "\n".join(key_lines)
-
-        service_json = {
-            "type": "service_account",
-            "project_id": "discord-bot-project-474420",
-            "private_key_id": "e719591d1b99197d5eb0cede954efcb1caf67e7a",
-            "private_key": private_key,
-            "client_email": "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
-            "client_id": "106826889279899095896",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
-            "universe_domain": "googleapis.com"
-        }
-
-        # Google Drive 認証
-        self.gauth = GoogleAuth()
-        scope = ["https://www.googleapis.com/auth/drive"]
-        self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
-        self.drive = GoogleDrive(self.gauth)
+        self.dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
         # 設定ロード
         os.makedirs("data", exist_ok=True)
@@ -53,18 +18,19 @@ class ConfigManager:
 
         # コマンド登録
         self.register_commands()
-        self.register_sa_check_command()
-        self.register_drive_show_command()
+        self.register_drive_show_command()  # 名前はそのままでもOK
 
     # 設定ロード
     def load_config(self):
         try:
-            file = self.drive.CreateFile({"id": self.drive_file_id})
-            file.GetContentFile(CONFIG_LOCAL_PATH)
+            metadata, res = self.dbx.files_download(DROPBOX_PATH)
+            with open(CONFIG_LOCAL_PATH, "wb") as f:
+                f.write(res.content)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
             return config
-        except Exception as e:
+        except dropbox.exceptions.ApiError:
+            # ファイルがなければデフォルト生成
             default = {"server_pairs": []}
             self.save_config(default)
             return default
@@ -76,11 +42,10 @@ class ConfigManager:
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
         try:
-            file = self.drive.CreateFile({"id": self.drive_file_id})
-            file.SetContentFile(CONFIG_LOCAL_PATH)
-            file.Upload()
+            with open(CONFIG_LOCAL_PATH, "rb") as f:
+                self.dbx.files_upload(f.read(), DROPBOX_PATH, mode=dropbox.files.WriteMode.overwrite)
         except Exception as e:
-            print(f"[WARN] Google Drive へのアップロード失敗: {e}")
+            print(f"[WARN] Dropbox へのアップロード失敗: {e}")
 
     # 管理者チェック
     def is_admin(self, guild_id, user_id):
@@ -147,47 +112,7 @@ class ConfigManager:
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
 
-    # SA チェックコマンド
-    def register_sa_check_command(self):
-        bot = self.bot
-
-        @bot.command(name="check_sa")
-        async def check_sa(ctx: commands.Context):
-            if not self.is_admin(ctx.guild.id, ctx.author.id):
-                await ctx.send("❌ 管理者ではありません。")
-                return
-
-            key_lines = []
-            i = 1
-            while True:
-                env_name = f"SERVICE_KEY_LINE_{i}"
-                line = os.getenv(env_name)
-                if line is None:
-                    break
-                key_lines.append(line)
-                i += 1
-
-            if not key_lines:
-                await ctx.send("❌ SERVICE_KEY_LINE が設定されていません。")
-                return
-
-            private_key = "\n".join(key_lines)
-            service_json = {
-                "type": "service_account",
-                "project_id": "discord-bot-project-474420",
-                "private_key_id": "e719591d1b99197d5eb0cede954efcb1caf67e7a",
-                "client_email": "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
-                "client_id": "106826889279899095896",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com",
-                "universe_domain": "googleapis.com"
-            }
-
-            await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
-
-    # Google Drive JSON 表示コマンド
+    # Dropbox JSON 表示コマンド
     def register_drive_show_command(self):
         bot = self.bot
 
@@ -198,17 +123,14 @@ class ConfigManager:
                 return
 
             try:
-                file = self.drive.CreateFile({"id": self.drive_file_id})
-                file.GetContentFile(CONFIG_LOCAL_PATH)
-
-                with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+                metadata, res = self.dbx.files_download(DROPBOX_PATH)
+                config = json.loads(res.content.decode("utf-8"))
 
                 json_text = json.dumps(config, indent=2, ensure_ascii=False)
                 if len(json_text) < 1900:
-                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
+                    await ctx.send(f"✅ Dropbox 上の設定 JSON\n```json\n{json_text}\n```")
                 else:
-                    await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
+                    await ctx.send(f"✅ Dropbox 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
 
             except Exception as e:
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
