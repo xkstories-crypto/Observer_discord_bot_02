@@ -1,19 +1,32 @@
 import os
 import json
+import asyncio
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
+ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))  # デバッグ送信先
 
+# ---------------------- Discord デバッグ送信 ----------------------
+async def send_debug(bot, message: str):
+    if ADMIN_CHANNEL_ID:
+        channel = bot.get_channel(ADMIN_CHANNEL_ID)
+        if channel:
+            await channel.send(f"[DEBUG] {message}")
+        else:
+            print(f"[WARN] 管理者チャンネル取得失敗: {ADMIN_CHANNEL_ID}")
+    else:
+        print(f"[DEBUG] {message}")
 
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
         self.drive_file_id = drive_file_id
 
-        print("[DEBUG] ConfigManager 初期化開始")
+        # Discord へデバッグ送信
+        asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化開始"))
 
         # ----------- サービスアカウント認証情報 -------------
         key_lines = []
@@ -28,12 +41,12 @@ class ConfigManager:
 
         if not key_lines:
             raise ValueError("SERVICE_ACCOUNT_KEY_1 以降の環境変数が設定されていません。")
-        print(f"[DEBUG] {len(key_lines)} 行の鍵を取得")
+        asyncio.create_task(send_debug(self.bot, f"{len(key_lines)} 行の鍵を取得"))
 
         private_key = "\n".join(key_lines)
-        print(f"[DEBUG] private_key length: {len(private_key)}")
-        print(f"[DEBUG] private_key startswith: {private_key.startswith('-----BEGIN PRIVATE KEY-----')}")
-        print(f"[DEBUG] private_key endswith: {private_key.endswith('-----END PRIVATE KEY-----')}")
+        asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
+        asyncio.create_task(send_debug(self.bot, f"private_key startswith: {private_key.startswith('-----BEGIN PRIVATE KEY-----')}"))
+        asyncio.create_task(send_debug(self.bot, f"private_key endswith: {private_key.endswith('-----END PRIVATE KEY-----')}"))
 
         # 他の情報と結合
         service_json = {
@@ -56,9 +69,9 @@ class ConfigManager:
             scope = ["https://www.googleapis.com/auth/drive"]
             self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
             self.drive = GoogleDrive(self.gauth)
-            print("[DEBUG] GoogleAuth 認証成功")
+            asyncio.create_task(send_debug(self.bot, "GoogleAuth 認証成功"))
         except Exception as e:
-            print(f"[ERROR] GoogleAuth 認証失敗: {e}")
+            asyncio.create_task(send_debug(self.bot, f"GoogleAuth 認証失敗: {e}"))
             raise
 
         # ----------- 設定ロード -------------
@@ -69,20 +82,20 @@ class ConfigManager:
         self.register_commands()
         self.register_sa_check_command()
         self.register_drive_show_command()
-        print("[DEBUG] ConfigManager 初期化完了")
+        asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化完了"))
 
     # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
         try:
-            print(f"[DEBUG] Google Drive からファイル取得開始: {self.drive_file_id}")
+            asyncio.create_task(send_debug(self.bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.GetContentFile(CONFIG_LOCAL_PATH)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            print("[LOAD] Google Drive から設定を読み込みました")
+            asyncio.create_task(send_debug(self.bot, "Google Drive から設定を読み込みました"))
             return config
         except Exception as e:
-            print(f"[WARN] Google Drive 読み込み失敗: {e}")
+            asyncio.create_task(send_debug(self.bot, f"Google Drive 読み込み失敗: {e}"))
             default = {"server_pairs": []}
             self.save_config(default)
             return default
@@ -97,9 +110,9 @@ class ConfigManager:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.SetContentFile(CONFIG_LOCAL_PATH)
             file.Upload()
-            print("[SAVE] Google Drive に設定をアップロードしました")
+            asyncio.create_task(send_debug(self.bot, "Google Drive に設定をアップロードしました"))
         except Exception as e:
-            print(f"[ERROR] Google Drive へのアップロード失敗: {e}")
+            asyncio.create_task(send_debug(self.bot, f"Google Drive へのアップロード失敗: {e}"))
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
@@ -115,7 +128,7 @@ class ConfigManager:
     # ---------------------------- 通常コマンド登録 ----------------------------
     def register_commands(self):
         bot = self.bot
-        print("[DEBUG] 通常コマンド登録開始")
+        asyncio.create_task(send_debug(bot, "通常コマンド登録開始"))
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
@@ -167,12 +180,12 @@ class ConfigManager:
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
 
-        print("[DEBUG] 通常コマンド登録完了")
+        asyncio.create_task(send_debug(bot, "通常コマンド登録完了"))
 
-    # ---------------------------- 管理者限定 SA チェックコマンド ----------------------------
+    # ---------------------------- SA チェックコマンド ----------------------------
     def register_sa_check_command(self):
         bot = self.bot
-        print("[DEBUG] SA チェックコマンド登録開始")
+        asyncio.create_task(send_debug(bot, "SA チェックコマンド登録開始"))
 
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
@@ -209,12 +222,12 @@ class ConfigManager:
             }
 
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
-        print("[DEBUG] SA チェックコマンド登録完了")
+        asyncio.create_task(send_debug(bot, "SA チェックコマンド登録完了"))
 
     # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
     def register_drive_show_command(self):
         bot = self.bot
-        print("[DEBUG] Google Drive JSON 表示コマンド登録開始")
+        asyncio.create_task(send_debug(bot, "Google Drive JSON 表示コマンド登録開始"))
 
         @bot.command(name="show")
         async def show_config(ctx: commands.Context):
@@ -223,10 +236,10 @@ class ConfigManager:
                 return
 
             try:
-                print(f"[DEBUG] Google Drive からファイル取得開始: {self.drive_file_id}")
+                asyncio.create_task(send_debug(bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 file = self.drive.CreateFile({"id": self.drive_file_id})
                 file.GetContentFile(CONFIG_LOCAL_PATH)
-                print(f"[DEBUG] ファイル取得成功: {CONFIG_LOCAL_PATH}")
+                asyncio.create_task(send_debug(bot, f"ファイル取得成功: {CONFIG_LOCAL_PATH}"))
 
                 with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                     config = json.load(f)
@@ -236,8 +249,8 @@ class ConfigManager:
                     await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
                 else:
                     await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
-                print("[DEBUG] show コマンド実行完了")
+                asyncio.create_task(send_debug(bot, "show コマンド実行完了"))
 
             except Exception as e:
-                print(f"[ERROR] JSON 読み込みに失敗: {e}")
+                asyncio.create_task(send_debug(bot, f"JSON 読み込みに失敗: {e}"))
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
