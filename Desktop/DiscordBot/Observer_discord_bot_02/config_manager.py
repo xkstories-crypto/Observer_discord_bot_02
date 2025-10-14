@@ -32,14 +32,15 @@ class ConfigManager:
         key_lines = []
         i = 1
         while True:
-            line = os.getenv(f"SERVICE_KEY_LINE_{i}")
-            if line is None:
+            # 01形式対応: SERVICE_KEY_LINE_01 〜 SERVICE_KEY_LINE_99
+            line = os.getenv(f"SERVICE_KEY_LINE_{i:02d}") or os.getenv(f"SERVICE_KEY_LINE_{i}")
+            if not line:
                 break
             key_lines.append(line)
             i += 1
 
         if not key_lines:
-            raise ValueError("SERVICE_KEY_LINE_1 以降の環境変数が設定されていません。")
+            raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
 
         private_key = "\n".join(key_lines)
         asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
@@ -47,7 +48,7 @@ class ConfigManager:
         # 他の情報と結合
         service_json = {
             "type": "service_account",
-            "project_id": "discord-bot-project-474420",
+            "project_id": os.getenv("SERVICE_PROJECT_ID", "discord-bot-project-474420"),
             "private_key_id": os.getenv("SERVICE_KEY_ID", ""),
             "private_key": private_key,
             "client_email": os.getenv("SERVICE_CLIENT_EMAIL", ""),
@@ -167,6 +168,7 @@ class ConfigManager:
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
             await ctx.send("✅ SA コマンド実行")
+
         asyncio.create_task(send_debug(bot, "SA チェックコマンド登録完了"))
 
     # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
