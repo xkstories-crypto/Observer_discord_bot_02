@@ -7,7 +7,7 @@ from discord.ext import commands
 import traceback
 import asyncio
 import json
-from config_manager import ConfigManager  # Dropbox版ConfigManagerを使用
+from config_manager import ConfigManager  # Google Drive版ConfigManagerを使用
 
 # ---------- 環境変数からトークン取得 ----------
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -43,8 +43,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------- 非同期でBot起動 ----------
 async def main():
     async with bot:
-        # Dropbox対応 ConfigManager 初期化
-        config_manager = ConfigManager(bot)  # Dropbox版は DRIVE_FILE_ID 不要
+        # Google Drive対応 ConfigManager 初期化
+        DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")
+        if not DRIVE_FILE_ID:
+            raise ValueError("DRIVE_FILE_ID が取得できません。")
+
+        config_manager = ConfigManager(bot, drive_file_id=DRIVE_FILE_ID)
         bot.config_manager = config_manager
 
         # Cog のロード
@@ -79,13 +83,15 @@ async def main():
                 local_config = bot.config_manager.config
                 local_text = json.dumps(local_config, indent=2, ensure_ascii=False)
 
-                # Dropbox 上の config
+                # Google Drive 上の config
                 try:
-                    metadata, res = bot.config_manager.dbx.files_download(bot.config_manager.DROPBOX_PATH)
-                    dropbox_config = json.loads(res.content.decode("utf-8"))
-                    dropbox_text = json.dumps(dropbox_config, indent=2, ensure_ascii=False)
+                    file = bot.config_manager.drive.CreateFile({"id": bot.config_manager.drive_file_id})
+                    file.GetContentFile("tmp_config.json")
+                    with open("tmp_config.json", "r", encoding="utf-8") as f:
+                        drive_config = json.load(f)
+                    drive_text = json.dumps(drive_config, indent=2, ensure_ascii=False)
                 except Exception as e:
-                    dropbox_text = f"⚠️ Dropbox 読み込み失敗: {e}"
+                    drive_text = f"⚠️ Google Drive 読み込み失敗: {e}"
 
                 # Discord 1メッセージの文字数制限に対応して分割
                 CHUNK_SIZE = 1800
@@ -95,10 +101,10 @@ async def main():
                 for i in range(0, len(local_text), CHUNK_SIZE):
                     await ctx.send(f"```json\n{local_text[i:i+CHUNK_SIZE]}\n```")
 
-                # Dropbox 設定送信
-                await ctx.send("✅ **Dropbox 設定**")
-                for i in range(0, len(dropbox_text), CHUNK_SIZE):
-                    await ctx.send(f"```json\n{dropbox_text[i:i+CHUNK_SIZE]}\n```")
+                # Google Drive 設定送信
+                await ctx.send("✅ **Google Drive 設定**")
+                for i in range(0, len(drive_text), CHUNK_SIZE):
+                    await ctx.send(f"```json\n{drive_text[i:i+CHUNK_SIZE]}\n```")
 
                 await ctx.send("✅ 全データ送信完了")
 
