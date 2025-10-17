@@ -43,19 +43,15 @@ class TransferCog(commands.Cog):
 
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
-            await self.send_debug(f"このサーバーは転送ペアに登録されていません", fallback_channel=message.channel)
+            await self.send_debug("このサーバーは転送ペアに登録されていません", fallback_channel=message.channel)
             await self.bot.process_commands(message)
             return
-
-        await self.send_debug(f"ペア取得: A_ID={pair.get('A_ID')} → B_ID={pair.get('B_ID')}", fallback_channel=message.channel)
 
         dest_id = pair.get("CHANNEL_MAPPING", {}).get(str(message.channel.id))
         if not dest_id:
             await self.send_debug("このチャンネルには対応する転送先が設定されていません", fallback_channel=message.channel)
             await self.bot.process_commands(message)
             return
-
-        await self.send_debug(f"転送先チャンネルID: {dest_id}", fallback_channel=message.channel)
 
         dest_guild = self.bot.get_guild(pair.get("B_ID"))
         if not dest_guild:
@@ -73,29 +69,31 @@ class TransferCog(commands.Cog):
 
         # ---------------------- 転送処理 ----------------------
         try:
-            # 1. Embed送信（テキスト・リンク・メンション含む）
-            content = message.content or " "
-            # ロールメンション置換
-            for role in message.role_mentions:
-                dest_role = discord.utils.get(dest_guild.roles, name=role.name)
-                if dest_role:
-                    content = content.replace(f"<@&{role.id}>", dest_role.mention)
-                else:
-                    content = content.replace(f"<@&{role.id}>", f"@{role.name}")
-            # ユーザーメンション置換（必要なら）
-            for user in message.mentions:
-                content = content.replace(f"<@{user.id}>", user.mention)
+            # 1. Embed 送信（テキスト・リンク・メンションも含む）
+            if message.content.strip() or message.mentions or message.role_mentions:
+                embed = discord.Embed(description=message.content or " ")
+                embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
+                await dest_channel.send(embed=embed)
+                await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
 
-            embed = discord.Embed(description=content)
-            embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
-            await dest_channel.send(embed=embed)
-            await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
-
-            # 2. 添付ファイルは別送信
+            # 2. 添付ファイルは別で転送
             for att in message.attachments:
                 file = await att.to_file()
                 await dest_channel.send(file=file)
                 await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
+
+            # 3. メンションは別で通知（Embedとは別）
+            mention_text = ""
+            for user in message.mentions:
+                mention_text += user.mention + " "
+            for role in message.role_mentions:
+                # 転送先サーバーに同名ロールがある場合のみ通知
+                dest_role = discord.utils.get(dest_guild.roles, name=role.name)
+                if dest_role:
+                    mention_text += dest_role.mention + " "
+            if mention_text.strip():
+                await dest_channel.send(mention_text.strip())
+                await self.send_debug(f"メンション転送完了: {mention_text.strip()}", fallback_channel=message.channel)
 
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
