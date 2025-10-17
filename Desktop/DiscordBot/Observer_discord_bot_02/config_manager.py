@@ -4,6 +4,7 @@ import asyncio
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
+from discord import Intents
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
@@ -44,7 +45,7 @@ class ConfigManager:
 
         asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
 
-        # ----------- service_json -----------
+        # ----------- service_json -------------
         service_json = {
             "type": "service_account",
             "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
@@ -113,7 +114,6 @@ class ConfigManager:
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
-        # とりあえず全員管理者扱い
         return True
 
     def get_pair_by_guild(self, guild_id):
@@ -188,7 +188,12 @@ class ConfigManager:
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
 
 # ---------------------- Bot 起動 ----------------------
-bot = commands.Bot(command_prefix="!")
+intents = Intents.default()
+intents.guilds = True
+intents.messages = True
+intents.message_content = True  # コマンドで必要
+
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Drive ファイルIDを指定して ConfigManager 初期化
 config_manager = ConfigManager(bot, drive_file_id="1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx")
