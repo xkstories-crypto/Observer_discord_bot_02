@@ -25,12 +25,13 @@ class TransferCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        await self.send_debug(
+        # 受信メッセージを受信チャンネルに出力
+        debug_msg = (
             f"受信: guild={message.guild.name} ({message.guild.id}), "
             f"channel={message.channel.name} ({message.channel.id}), "
-            f"author={message.author.display_name}, content={message.content}",
-            fallback_channel=message.channel
+            f"author={message.author.display_name}, content={message.content}"
         )
+        await self.send_debug(debug_msg, fallback_channel=message.channel)
 
         # サーバーペアを取得
         pair = self.config_manager.get_pair_by_a(message.guild.id)
@@ -59,8 +60,14 @@ class TransferCog(commands.Cog):
             content = message.content.strip()
             if not content:
                 return  # 空メッセージは転送しない
+
+            # Bサーバーに転送
             await dest_channel.send(f"[転送] {message.author.display_name}: {content}")
+
+            # 受信チャンネルにも転送完了通知
             await message.channel.send(f"✅ 転送完了 → {dest_channel.name} ({dest_channel.id})")
+
+            # デバッグログ
             await self.send_debug(
                 f"転送完了: {message.channel.id} → {dest_channel.id}",
                 fallback_channel=message.channel
