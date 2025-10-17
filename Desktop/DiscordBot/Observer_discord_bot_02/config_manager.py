@@ -20,6 +20,7 @@ async def send_debug(bot, message: str):
     else:
         print(f"[DEBUG] {message}")
 
+# ---------------------- ConfigManager ----------------------
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
@@ -30,7 +31,7 @@ class ConfigManager:
         # ----------- サービスアカウント認証情報 -------------
         key_lines = []
         for i in range(1, 100):
-            env_var = f"SERVICE_KEY_LINE_{i:02}"  # 01, 02, 03 ... の形式
+            env_var = f"SERVICE_KEY_LINE_{i:02}"  # LINE_01, LINE_02 ...
             val = os.getenv(env_var)
             if not val:
                 break
@@ -40,23 +41,21 @@ class ConfigManager:
             raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
 
         private_key = "\n".join(key_lines)
+
         asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
 
-        # ----------- service_json を環境変数対応に変更 -------------
+        # ----------- service_json -----------
         service_json = {
             "type": "service_account",
             "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-            "private_key_id": os.getenv("PRIVATE_KEY_ID", "e719591d1b99197d5eb0cede954efcb1caf67e7a"),
+            "private_key_id": os.getenv("PRIVATE_KEY_ID", "a087f21ff4c7c86974680eb6605168d176d51e23"),
             "private_key": private_key,
-            "client_email": os.getenv("CLIENT_EMAIL", "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com"),
-            "client_id": os.getenv("CLIENT_ID", "106826889279899095896"),
+            "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
+            "client_id": os.getenv("CLIENT_ID", "105596180367786843413"),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": os.getenv(
-                "CLIENT_X509_CERT_URL",
-                "https://www.googleapis.com/robot/v1/metadata/x509/discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com"
-            ),
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02%40discord-bot-project-474420.iam.gserviceaccount.com",
             "universe_domain": "googleapis.com",
         }
 
@@ -79,6 +78,7 @@ class ConfigManager:
         self.register_commands()
         self.register_sa_check_command()
         self.register_drive_show_command()
+
         asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化完了"))
 
     # ---------------------------- 設定ロード ----------------------------
@@ -99,10 +99,10 @@ class ConfigManager:
 
     # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
-        if data:
-            self.config = data
+        if data is None:
+            data = self.config
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, indent=2, ensure_ascii=False)
+            json.dump(data, f, indent=2, ensure_ascii=False)
         try:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.SetContentFile(CONFIG_LOCAL_PATH)
@@ -113,12 +113,12 @@ class ConfigManager:
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
-        pair = self.get_pair_by_guild(guild_id)
-        return pair and user_id in pair.get("ADMIN_IDS", [])
+        # とりあえず全員管理者扱い
+        return True
 
     def get_pair_by_guild(self, guild_id):
         for pair in self.config.get("server_pairs", []):
-            if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
+            if pair.get("guild_id") == guild_id:
                 return pair
         return None
 
@@ -129,51 +129,15 @@ class ConfigManager:
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
-            guild_id = ctx.guild.id
-            author_id = ctx.author.id
-            pair = self.get_pair_by_guild(guild_id)
-            if not pair:
-                pair = {
-                    "A_ID": None,
-                    "B_ID": guild_id,
-                    "CHANNEL_MAPPING": {"A_TO_B": {}},
-                    "ADMIN_IDS": [author_id],
-                    "DEBUG_CHANNEL": ctx.channel.id,
-                    "VC_LOG_CHANNEL": None,
-                    "AUDIT_LOG_CHANNEL": None,
-                    "OTHER_CHANNEL": None,
-                    "READ_USERS": []
-                }
-                self.config["server_pairs"].append(pair)
-                self.save_config()
-                await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
-                return
-
-            if author_id in pair.get("ADMIN_IDS", []):
-                await ctx.send("⚠️ すでに管理者として登録されています。")
-                return
-
-            pair["ADMIN_IDS"].append(author_id)
-            self.save_config()
-            await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
+            await ctx.send("✅ adomin コマンドが正常に動作しています。")
 
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, target_guild_id: int):
-            guild_id = ctx.guild.id
-            pair = self.get_pair_by_guild(guild_id)
-
-            if not pair:
-                await ctx.send("⚠️ このサーバーはまだ登録されていません。まず `!adomin` を実行してください。")
-                return
-
-            if not self.is_admin(guild_id, ctx.author.id):
-                await ctx.send("❌ 管理者権限がありません。")
-                return
-
-            if guild_id == pair.get("B_ID"):
-                pair["A_ID"] = target_guild_id
+            pair = self.get_pair_by_guild(ctx.guild.id)
+            if pair:
+                pair["target_guild_id"] = target_guild_id
                 self.save_config()
-                await ctx.send(f"✅ 対応サーバーを `{target_guild_id}` に設定しました。")
+                await ctx.send("✅ 対応サーバーを設定しました。")
             else:
                 await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
 
@@ -186,31 +150,12 @@ class ConfigManager:
 
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            if not self.is_admin(ctx.guild.id, ctx.author.id):
-                await ctx.send("❌ 管理者ではありません。")
-                return
-
-            key_lines = []
-            for i in range(1, 100):
-                env_var = f"SERVICE_KEY_LINE_{i:02}"
-                val = os.getenv(env_var)
-                if not val:
-                    break
-                key_lines.append(val)
-
-            if not key_lines:
-                await ctx.send("❌ SERVICE_KEY_LINE が設定されていません。")
-                return
-
-            private_key = "\n".join(key_lines)
             service_json = {
-                "type": "service_account",
                 "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-                "client_email": os.getenv("CLIENT_EMAIL", "discord-bot-drive@discord-bot-project-474420.iam.gserviceaccount.com"),
-                "client_id": os.getenv("CLIENT_ID", "106826889279899095896"),
+                "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
+                "client_id": os.getenv("CLIENT_ID", "105596180367786843413"),
                 "private_key": "(省略済み)",
             }
-
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
         asyncio.create_task(send_debug(bot, "SA チェックコマンド登録完了"))
@@ -222,10 +167,6 @@ class ConfigManager:
 
         @bot.command(name="show")
         async def show_config(ctx: commands.Context):
-            if not self.drive:
-                await ctx.send("⚠️ Google Drive 認証が未完了です。")
-                return
-
             try:
                 asyncio.create_task(send_debug(bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 file = self.drive.CreateFile({"id": self.drive_file_id})
@@ -245,3 +186,11 @@ class ConfigManager:
             except Exception as e:
                 asyncio.create_task(send_debug(bot, f"JSON 読み込みに失敗: {e}"))
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
+
+# ---------------------- Bot 起動 ----------------------
+bot = commands.Bot(command_prefix="!")
+
+# Drive ファイルIDを指定して ConfigManager 初期化
+config_manager = ConfigManager(bot, drive_file_id="1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx")
+
+bot.run(os.getenv("DISCORD_TOKEN"))
