@@ -77,24 +77,29 @@ class TransferCog(commands.Cog):
 
         # ---------------------- 転送処理 ----------------------
         try:
-            content = message.content.strip()
-
-            # 1. 全てEmbedで送信（テキスト・リンク・添付ファイルURL）
-            embed_description = content if content else ""
-            for att in message.attachments:
-                embed_description += f"\n{att.url}"
-
-            if embed_description:
-                embed = discord.Embed(description=embed_description)
+            # 1. Embed 送信（テキスト・リンク・メンションも含む）
+            if message.content.strip() or message.mentions or message.role_mentions:
+                embed = discord.Embed(description=message.content or " ")
                 embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
                 await dest_channel.send(embed=embed)
                 await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
 
-            # 2. 添付ファイルはEmbed送信の後に別送信
+            # 2. 添付ファイルは別で転送
             for att in message.attachments:
                 file = await att.to_file()
                 await dest_channel.send(file=file)
-                await self.send_debug(f"添付ファイル別送信完了: {att.filename}", fallback_channel=message.channel)
+                await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
+
+            # 3. メンションは別で通知付き送信
+            if message.mentions or message.role_mentions:
+                mention_text = ""
+                for user in message.mentions:
+                    mention_text += user.mention + " "
+                for role in message.role_mentions:
+                    mention_text += role.mention + " "
+                if mention_text:
+                    await dest_channel.send(mention_text.strip())
+                    await self.send_debug(f"メンション転送完了: {mention_text}", fallback_channel=message.channel)
 
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
