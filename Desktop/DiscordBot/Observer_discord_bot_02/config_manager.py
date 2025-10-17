@@ -7,8 +7,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
-ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))  # デバッグ送信先
+ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))
 
+# ---------------------- Discord デバッグ送信 ----------------------
 async def send_debug(bot, message: str):
     if ADMIN_CHANNEL_ID:
         channel = bot.get_channel(ADMIN_CHANNEL_ID)
@@ -19,23 +20,43 @@ async def send_debug(bot, message: str):
     else:
         print(f"[DEBUG] {message}")
 
+
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
         self.drive_file_id = drive_file_id
-
         asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化開始"))
 
         # ----------- サービスアカウント認証情報 -------------
-        service_json_env = os.getenv("SERVICE_JSON")
-        if not service_json_env:
-            raise ValueError("環境変数 SERVICE_JSON が設定されていません。")
-        
-        try:
-            service_json = json.loads(service_json_env)
-            asyncio.create_task(send_debug(self.bot, f"サービスアカウント JSON 読み込み成功"))
-        except Exception as e:
-            raise ValueError(f"SERVICE_JSON の読み込みに失敗: {e}")
+        key_lines = []
+        i = 1
+        while True:
+            # SERVICE_KEY_LINE_01, SERVICE_KEY_LINE_02 ... に対応
+            line = os.getenv(f"SERVICE_KEY_LINE_{i:02d}") or os.getenv(f"SERVICE_KEY_LINE_{i}")
+            if not line:
+                break
+            key_lines.append(line)
+            i += 1
+
+        if not key_lines:
+            raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
+
+        private_key = "\n".join(key_lines)
+        asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
+
+        service_json = {
+            "type": "service_account",
+            "project_id": os.getenv("SERVICE_PROJECT_ID", "discord-bot-project-474420"),
+            "private_key_id": os.getenv("SERVICE_KEY_ID", ""),
+            "private_key": private_key,
+            "client_email": os.getenv("SERVICE_CLIENT_EMAIL", ""),
+            "client_id": os.getenv("SERVICE_CLIENT_ID", ""),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": os.getenv("SERVICE_CLIENT_CERT_URL", ""),
+            "universe_domain": "googleapis.com",
+        }
 
         # ----------- Google Drive 認証処理 -------------
         try:
@@ -48,7 +69,6 @@ class ConfigManager:
             asyncio.create_task(send_debug(self.bot, f"GoogleAuth 認証失敗: {e}"))
             raise
 
-        # ----------- 設定ロード -------------
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
@@ -120,7 +140,7 @@ class ConfigManager:
                     "VC_LOG_CHANNEL": None,
                     "AUDIT_LOG_CHANNEL": None,
                     "OTHER_CHANNEL": None,
-                    "READ_USERS": []
+                    "READ_USERS": [],
                 }
                 self.config["server_pairs"].append(pair)
                 self.save_config()
