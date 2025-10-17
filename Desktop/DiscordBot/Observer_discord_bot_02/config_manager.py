@@ -1,37 +1,22 @@
+# config_manager.py
 import os
 import json
 import asyncio
-import discord
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
-ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))  # デバッグ送信先
+ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))
 
-# ---------------------- Discord デバッグ送信 ----------------------
-async def send_debug(bot, message: str):
-    """指定された管理チャンネルまたは標準出力にデバッグメッセージを送信"""
-    if ADMIN_CHANNEL_ID:
-        channel = bot.get_channel(ADMIN_CHANNEL_ID)
-        if channel:
-            await channel.send(f"[DEBUG] {message}")
-        else:
-            print(f"[WARN] 管理者チャンネル取得失敗: {ADMIN_CHANNEL_ID}")
-    else:
-        print(f"[DEBUG] {message}")
-
-# ---------------------- ConfigManager クラス ----------------------
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
-        """Google Drive上の設定ファイルを管理するクラス"""
         self.bot = bot
         self.drive_file_id = drive_file_id
 
-        asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化開始"))
+        asyncio.create_task(self.send_debug("ConfigManager 初期化開始"))
 
-        # ----------- サービスアカウント鍵を環境変数から再構築 -------------
         key_lines = []
         for i in range(1, 100):
             env_name = f"SERVICE_KEY_LINE_{i:02}"
@@ -44,9 +29,7 @@ class ConfigManager:
             raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
 
         private_key = "\n".join(key_lines)
-        asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
 
-        # ----------- サービスアカウントJSON組み立て -------------
         service_json = {
             "type": "service_account",
             "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
@@ -57,86 +40,89 @@ class ConfigManager:
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "",
+            "client_x509_cert_url": os.getenv("CLIENT_X509_CERT_URL", ""),
             "universe_domain": "googleapis.com"
         }
 
-        # ----------- Google Drive 認証処理 -------------
         try:
             self.gauth = GoogleAuth()
             scope = ["https://www.googleapis.com/auth/drive"]
             self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
             self.drive = GoogleDrive(self.gauth)
-            asyncio.create_task(send_debug(self.bot, "GoogleAuth 認証成功"))
+            asyncio.create_task(self.send_debug("GoogleAuth 認証成功"))
         except Exception as e:
-            asyncio.create_task(send_debug(self.bot, f"GoogleAuth 認証失敗: {e}"))
+            asyncio.create_task(self.send_debug(f"GoogleAuth 認証失敗: {e}"))
             raise
 
-        # ----------- 設定ファイルのロード -------------
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
-        # ----------- コマンド登録 -------------
         self.register_commands()
-        self.register_set_server_command()
         self.register_sa_check_command()
         self.register_drive_show_command()
 
-        asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化完了"))
+        asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
 
-    # ---------------------------- 設定ロード ----------------------------
+    async def send_debug(self, message: str):
+        if ADMIN_CHANNEL_ID:
+            channel = self.bot.get_channel(ADMIN_CHANNEL_ID)
+            if channel:
+                await channel.send(f"[DEBUG] {message}")
+            else:
+                print(f"[WARN] 管理者チャンネル取得失敗: {ADMIN_CHANNEL_ID}")
+        else:
+            print(f"[DEBUG] {message}")
+
     def load_config(self):
         try:
-            asyncio.create_task(send_debug(self.bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.GetContentFile(CONFIG_LOCAL_PATH)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            asyncio.create_task(send_debug(self.bot, "Google Drive から設定を読み込みました"))
             return config
-        except Exception as e:
-            asyncio.create_task(send_debug(self.bot, f"Google Drive 読み込み失敗: {e}"))
+        except Exception:
             default = {"server_pairs": []}
             self.save_config(default)
             return default
 
-    # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
         if data is not None:
             self.config = data
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
-
         try:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.SetContentFile(CONFIG_LOCAL_PATH)
             file.Upload()
-            asyncio.create_task(send_debug(self.bot, "Google Drive に設定をアップロードしました"))
         except Exception as e:
-            asyncio.create_task(send_debug(self.bot, f"Google Drive へのアップロード失敗: {e}"))
+            print(f"[WARN] Google Drive アップロード失敗: {e}")
 
-    # ---------------------------- 管理者チェック ----------------------------
-    def is_admin(self, guild_id, user_id):
-        pair = self.get_pair_by_guild(guild_id)
-        return pair and user_id in pair.get("ADMIN_IDS", [])
-
+    # ------------------------ ペア取得 ------------------------
     def get_pair_by_guild(self, guild_id):
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
 
-    # ---------------------------- 通常コマンド登録 ----------------------------
+    def get_pair_by_a(self, a_id):
+        for pair in self.config.get("server_pairs", []):
+            if pair.get("A_ID") == a_id:
+                return pair
+        return None
+
+    def is_admin(self, guild_id, user_id):
+        pair = self.get_pair_by_guild(guild_id)
+        return pair and user_id in pair.get("ADMIN_IDS", [])
+
+    # ------------------------ コマンド登録 ------------------------
     def register_commands(self):
         bot = self.bot
-        asyncio.create_task(send_debug(bot, "通常コマンド登録開始"))
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
             guild_id = ctx.guild.id
             author_id = ctx.author.id
             pair = self.get_pair_by_guild(guild_id)
-
             if not pair:
                 pair = {
                     "A_ID": None,
@@ -162,45 +148,24 @@ class ConfigManager:
             self.save_config()
             await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
 
-        asyncio.create_task(send_debug(bot, "通常コマンド登録完了"))
-
-    # ---------------------------- !set_server コマンド ----------------------------
-    def register_set_server_command(self):
-        bot = self.bot
-        asyncio.create_task(send_debug(bot, "!set_server コマンド登録開始"))
-
         @bot.command(name="set_server")
         async def set_server(ctx: commands.Context, server_a_id: int):
-            if not self.is_admin(ctx.guild.id, ctx.author.id):
+            pair = self.get_pair_by_guild(ctx.guild.id)
+            if not pair:
+                await ctx.send("⚠️ このサーバーはまだペア登録されていません。まず adomin を使ってください。")
+                return
+            if ctx.author.id not in pair.get("ADMIN_IDS", []):
                 await ctx.send("⚠️ 管理者のみ使用可能です。")
                 return
 
-            pair = self.get_pair_by_guild(ctx.guild.id)
-            if not pair:
-                pair = {
-                    "A_ID": server_a_id,
-                    "B_ID": ctx.guild.id,
-                    "CHANNEL_MAPPING": {},
-                    "ADMIN_IDS": [ctx.author.id],
-                    "DEBUG_CHANNEL": ctx.channel.id,
-                    "VC_LOG_CHANNEL": None,
-                    "AUDIT_LOG_CHANNEL": None,
-                    "OTHER_CHANNEL": None,
-                    "READ_USERS": []
-                }
-                self.config["server_pairs"].append(pair)
-            else:
-                pair["A_ID"] = server_a_id
-
+            pair["A_ID"] = server_a_id
             self.save_config()
             await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定しました。")
 
-            # --- チャンネルコピー処理 ---
-            guild_a = bot.get_guild(server_a_id)
-            guild_b = bot.get_guild(pair["B_ID"])
-
-            if guild_a is None or guild_b is None:
-                await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
+            guild_a = self.bot.get_guild(server_a_id)
+            guild_b = self.bot.get_guild(pair["B_ID"])
+            if not guild_a or not guild_b:
+                await ctx.send("⚠️ Bot が両方のサーバーに参加しているか確認してください。")
                 return
 
             for channel in guild_a.channels:
@@ -220,8 +185,6 @@ class ConfigManager:
 
             self.save_config()
             await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
-
-        asyncio.create_task(send_debug(bot, "!set_server コマンド登録完了"))
 
     # ---------------------------- SA チェックコマンド ----------------------------
     def register_sa_check_command(self):
