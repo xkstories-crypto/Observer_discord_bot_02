@@ -75,14 +75,31 @@ class TransferCog(commands.Cog):
 
         await self.send_debug(f"転送先チャンネル取得: {dest_channel.name} ({dest_channel.id})", fallback_channel=message.channel)
 
-        # 転送処理
+        # ---------------------- 転送処理 ----------------------
         try:
             content = message.content.strip()
-            if not content:
-                await self.send_debug("空メッセージのため転送しません", fallback_channel=message.channel)
-                return
-            await dest_channel.send(f"[転送] {message.author.display_name}: {content}")
-            await self.send_debug(f"転送完了 → {dest_channel.name} ({dest_channel.id})", fallback_channel=message.channel)
+            
+            # 1. テキスト・リンクはEmbedで送信
+            if content:
+                try:
+                    embed = discord.Embed(description=content)
+                    embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
+                    await dest_channel.send(embed=embed)
+                    await self.send_debug(f"テキスト転送完了 → {dest_channel.name} ({dest_channel.id})", fallback_channel=message.channel)
+                except Exception as e:
+                    await self.send_debug(f"Embed転送失敗: {e}", fallback_channel=message.channel)
+                    # 万が一Embed失敗したら普通にテキスト送信
+                    await dest_channel.send(f"[転送] {message.author.display_name}: {content}")
+
+            # 2. 添付ファイル・画像・動画は別送信
+            for att in message.attachments:
+                try:
+                    file = await att.to_file()
+                    await dest_channel.send(file=file)
+                    await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
+                except Exception as e:
+                    await self.send_debug(f"添付ファイル転送失敗: {att.filename} ({e})", fallback_channel=message.channel)
+
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
 
