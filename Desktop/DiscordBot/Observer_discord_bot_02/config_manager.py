@@ -6,6 +6,7 @@ from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
+import discord
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))
@@ -17,6 +18,7 @@ class ConfigManager:
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化開始"))
 
+        # 環境変数から private_key を復元
         key_lines = []
         for i in range(1, 100):
             env_name = f"SERVICE_KEY_LINE_{i:02}"
@@ -30,17 +32,18 @@ class ConfigManager:
 
         private_key = "\n".join(key_lines)
 
+        # サービスアカウント JSON 組み立て（固定値＋ private_key 使用）
         service_json = {
             "type": "service_account",
-            "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-            "private_key_id": os.getenv("PRIVATE_KEY_ID", ""),
+            "project_id": "discord-bot-project-474420",
+            "private_key_id": "a087f21ff4c7c86974680eb6605168d176d51e23",
             "private_key": private_key,
-            "client_email": os.getenv("CLIENT_EMAIL", ""),
-            "client_id": os.getenv("CLIENT_ID", ""),
+            "client_email": "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
+            "client_id": "105596180367786843413",
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": os.getenv("CLIENT_X509_CERT_URL", ""),
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
             "universe_domain": "googleapis.com"
         }
 
@@ -58,7 +61,7 @@ class ConfigManager:
         self.config = self.load_config()
 
         self.register_commands()
-        self.register_sa_check_command()
+        self.register_sa_check_command(private_key)
         self.register_drive_show_command()
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
@@ -187,38 +190,44 @@ class ConfigManager:
             await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
 
     # ---------------------------- SA チェックコマンド ----------------------------
-    def register_sa_check_command(self):
-        bot = self.bot
-        asyncio.create_task(send_debug(bot, "SA チェックコマンド登録開始"))
+    def register_sa_check_command(self, private_key: str):
+        asyncio.create_task(self.send_debug("SA チェックコマンド登録開始"))
 
-        @bot.command(name="check_sa")
+        @self.bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
             service_json = {
-                "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-                "client_email": os.getenv("CLIENT_EMAIL", ""),
-                "client_id": os.getenv("CLIENT_ID", ""),
-                "private_key": "(省略済み)",
+                "type": "service_account",
+                "project_id": "discord-bot-project-474420",
+                "private_key_id": "a087f21ff4c7c86974680eb6605168d176d51e23",
+                "private_key": private_key,  # ← dynamic
+                "client_email": "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
+                "client_id": "105596180367786843413",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
+                "universe_domain": "googleapis.com"
             }
-            await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
-        asyncio.create_task(send_debug(bot, "SA チェックコマンド登録完了"))
+            await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
+
+        asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
 
     # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
     def register_drive_show_command(self):
-        bot = self.bot
-        asyncio.create_task(send_debug(bot, "Google Drive JSON 表示コマンド登録開始"))
+        asyncio.create_task(self.send_debug("Google Drive JSON 表示コマンド登録開始"))
 
-        @bot.command(name="show")
+        @self.bot.command(name="show")
         async def show_config(ctx: commands.Context):
             if not self.is_admin(ctx.guild.id, ctx.author.id):
                 await ctx.send("❌ 管理者ではありません。")
                 return
 
             try:
-                asyncio.create_task(send_debug(bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
+                asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 file = self.drive.CreateFile({"id": self.drive_file_id})
                 file.GetContentFile(CONFIG_LOCAL_PATH)
-                asyncio.create_task(send_debug(bot, f"ファイル取得成功: {CONFIG_LOCAL_PATH}"))
+                asyncio.create_task(self.send_debug(f"ファイル取得成功: {CONFIG_LOCAL_PATH}"))
 
                 with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                     config = json.load(f)
@@ -229,7 +238,7 @@ class ConfigManager:
                 else:
                     await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
 
-                asyncio.create_task(send_debug(bot, "show コマンド実行完了"))
+                asyncio.create_task(self.send_debug("show コマンド実行完了"))
             except Exception as e:
-                asyncio.create_task(send_debug(bot, f"JSON 読み込みに失敗: {e}"))
+                asyncio.create_task(self.send_debug(f"JSON 読み込みに失敗: {e}"))
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
