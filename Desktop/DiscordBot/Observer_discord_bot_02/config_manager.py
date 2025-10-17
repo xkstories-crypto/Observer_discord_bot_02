@@ -1,7 +1,7 @@
-
 import os
 import json
 import asyncio
+import discord
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
@@ -50,14 +50,14 @@ class ConfigManager:
         service_json = {
             "type": "service_account",
             "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-            "private_key_id": os.getenv("PRIVATE_KEY_ID", "a087f21ff4c7c86974680eb6605168d176d51e23"),
+            "private_key_id": os.getenv("PRIVATE_KEY_ID", ""),
             "private_key": private_key,
-            "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
-            "client_id": os.getenv("CLIENT_ID", "105596180367786843413"),
+            "client_email": os.getenv("CLIENT_EMAIL", ""),
+            "client_id": os.getenv("CLIENT_ID", ""),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02%40discord-bot-project-474420.iam.gserviceaccount.com",
+            "client_x509_cert_url": "",
             "universe_domain": "googleapis.com"
         }
 
@@ -78,6 +78,7 @@ class ConfigManager:
 
         # ----------- コマンド登録 -------------
         self.register_commands()
+        self.register_set_server_command()
         self.register_sa_check_command()
         self.register_drive_show_command()
 
@@ -140,7 +141,7 @@ class ConfigManager:
                 pair = {
                     "A_ID": None,
                     "B_ID": guild_id,
-                    "CHANNEL_MAPPING": {},  # ← ラベル削除
+                    "CHANNEL_MAPPING": {},
                     "ADMIN_IDS": [author_id],
                     "DEBUG_CHANNEL": ctx.channel.id,
                     "VC_LOG_CHANNEL": None,
@@ -163,6 +164,65 @@ class ConfigManager:
 
         asyncio.create_task(send_debug(bot, "通常コマンド登録完了"))
 
+    # ---------------------------- !set_server コマンド ----------------------------
+    def register_set_server_command(self):
+        bot = self.bot
+        asyncio.create_task(send_debug(bot, "!set_server コマンド登録開始"))
+
+        @bot.command(name="set_server")
+        async def set_server(ctx: commands.Context, server_a_id: int):
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("⚠️ 管理者のみ使用可能です。")
+                return
+
+            pair = self.get_pair_by_guild(ctx.guild.id)
+            if not pair:
+                pair = {
+                    "A_ID": server_a_id,
+                    "B_ID": ctx.guild.id,
+                    "CHANNEL_MAPPING": {},
+                    "ADMIN_IDS": [ctx.author.id],
+                    "DEBUG_CHANNEL": ctx.channel.id,
+                    "VC_LOG_CHANNEL": None,
+                    "AUDIT_LOG_CHANNEL": None,
+                    "OTHER_CHANNEL": None,
+                    "READ_USERS": []
+                }
+                self.config["server_pairs"].append(pair)
+            else:
+                pair["A_ID"] = server_a_id
+
+            self.save_config()
+            await ctx.send(f"✅ SERVER_A_ID を {server_a_id} に設定しました。")
+
+            # --- チャンネルコピー処理 ---
+            guild_a = bot.get_guild(server_a_id)
+            guild_b = bot.get_guild(pair["B_ID"])
+
+            if guild_a is None or guild_b is None:
+                await ctx.send("⚠️ サーバーが見つかりません。Botが両方のサーバーに参加しているか確認してください。")
+                return
+
+            for channel in guild_a.channels:
+                if isinstance(channel, discord.CategoryChannel):
+                    cat = await guild_b.create_category(name=channel.name)
+                    pair["CHANNEL_MAPPING"][str(channel.id)] = cat.id
+                elif isinstance(channel, discord.TextChannel):
+                    category_id = pair["CHANNEL_MAPPING"].get(str(channel.category_id))
+                    cat = guild_b.get_channel(category_id) if category_id else None
+                    new_ch = await guild_b.create_text_channel(name=channel.name, category=cat)
+                    pair["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
+                elif isinstance(channel, discord.VoiceChannel):
+                    category_id = pair["CHANNEL_MAPPING"].get(str(channel.category_id))
+                    cat = guild_b.get_channel(category_id) if category_id else None
+                    new_ch = await guild_b.create_voice_channel(name=channel.name, category=cat)
+                    pair["CHANNEL_MAPPING"][str(channel.id)] = new_ch.id
+
+            self.save_config()
+            await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
+
+        asyncio.create_task(send_debug(bot, "!set_server コマンド登録完了"))
+
     # ---------------------------- SA チェックコマンド ----------------------------
     def register_sa_check_command(self):
         bot = self.bot
@@ -172,8 +232,8 @@ class ConfigManager:
         async def check_sa(ctx: commands.Context):
             service_json = {
                 "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
-                "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
-                "client_id": os.getenv("CLIENT_ID", "105596180367786843413"),
+                "client_email": os.getenv("CLIENT_EMAIL", ""),
+                "client_id": os.getenv("CLIENT_ID", ""),
                 "private_key": "(省略済み)",
             }
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容（private_key 省略）\n```json\n{json.dumps(service_json, indent=2)}\n```")
