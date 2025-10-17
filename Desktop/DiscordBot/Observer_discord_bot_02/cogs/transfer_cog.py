@@ -1,24 +1,13 @@
-
 # transfer_cog.py
 from discord.ext import commands
 import discord
+import asyncio
 
 class TransferCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager):
         self.bot = bot
         self.config_manager = config_manager
-        print("[DEBUG] TransferCog loaded")
-
-    async def send_debug(self, text: str, fallback_channel: discord.TextChannel = None):
-        """デバッグメッセージを送信（失敗時はコンソール出力）"""
-        await self.bot.wait_until_ready()
-        try:
-            if fallback_channel:
-                await fallback_channel.send(f"[DEBUG] {text}")
-            else:
-                print(f"[DEBUG LOG] {text}")
-        except Exception as e:
-            print(f"[DEBUG ERROR] {e}")
+        asyncio.create_task(self.config_manager.send_debug(bot, "[DEBUG] TransferCog loaded"))
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -26,7 +15,7 @@ class TransferCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        await self.send_debug(
+        await self.config_manager.send_debug(
             f"受信: guild={message.guild.name} ({message.guild.id}), "
             f"channel={message.channel.name} ({message.channel.id}), "
             f"author={message.author.display_name}, content={message.content}",
@@ -39,6 +28,7 @@ class TransferCog(commands.Cog):
             await message.channel.send("⚠️ このサーバーは転送ペアに登録されていません。")
             await self.bot.process_commands(message)
             return
+
         await message.channel.send(f"[DEBUG] ペア取得: A_ID={pair.get('A_ID')} → B_ID={pair.get('B_ID')}")
 
         # 転送先チャンネルIDを取得
@@ -47,6 +37,7 @@ class TransferCog(commands.Cog):
             await message.channel.send("⚠️ このチャンネルには対応する転送先が設定されていません。")
             await self.bot.process_commands(message)
             return
+
         await message.channel.send(f"[DEBUG] 転送先チャンネルID: {dest_id}")
 
         # Bサーバーと転送先チャンネルを取得
@@ -55,11 +46,13 @@ class TransferCog(commands.Cog):
             await message.channel.send(f"⚠️ Bサーバーが見つかりません（ID: {pair.get('B_ID')}）")
             await self.bot.process_commands(message)
             return
+
         dest_channel = dest_guild.get_channel(dest_id)
         if not dest_channel:
             await message.channel.send(f"⚠️ 転送先チャンネルが見つかりません（ID: {dest_id}）")
             await self.bot.process_commands(message)
             return
+
         await message.channel.send(f"[DEBUG] 転送先チャンネル取得: {dest_channel.name} ({dest_channel.id})")
 
         # 転送処理
@@ -69,17 +62,20 @@ class TransferCog(commands.Cog):
                 return  # 空メッセージは転送しない
             await dest_channel.send(f"[転送] {message.author.display_name}: {content}")
             await message.channel.send(f"✅ 転送完了 → {dest_channel.name} ({dest_channel.id})")
-            await self.send_debug(f"転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
+            await self.config_manager.send_debug(
+                f"転送完了: {message.channel.id} → {dest_channel.id}",
+                fallback_channel=message.channel
+            )
         except Exception as e:
             await message.channel.send(f"⚠️ 転送失敗: {e}")
-            await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
+            await self.config_manager.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
 
         await self.bot.process_commands(message)
 
     @commands.command(name="debug_test")
     async def debug_test(self, ctx: commands.Context):
         """デバッグ送信テストコマンド"""
-        await self.send_debug("⚡デバッグ送信テスト⚡", fallback_channel=ctx.channel)
+        await self.config_manager.send_debug("⚡デバッグ送信テスト⚡", fallback_channel=ctx.channel)
         await ctx.send("デバッグ送信を実行しました ✅")
 
 async def setup(bot: commands.Bot):
