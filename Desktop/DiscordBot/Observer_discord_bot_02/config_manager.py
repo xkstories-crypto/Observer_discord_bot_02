@@ -29,16 +29,18 @@ class ConfigManager:
         # ----------- サービスアカウント認証情報 -------------
         key_lines = []
         for i in range(1, 100):
-            env_var = f"SERVICE_ACCOUNT_KEY_{i}"
+            env_var = f"SERVICE_ACCOUNT_KEY_{i:02}"  # ← 2桁ゼロ埋め（例: SERVICE_ACCOUNT_KEY_01）
             val = os.getenv(env_var)
             if not val:
                 break
             key_lines.append(val)
 
         if not key_lines:
-            raise ValueError("SERVICE_ACCOUNT_KEY_1 以降の環境変数が設定されていません。")
+            raise ValueError("SERVICE_ACCOUNT_KEY_01 以降の環境変数が設定されていません。")
 
         private_key = "\n".join(key_lines)
+
+        # デバッグ出力
         asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
         asyncio.create_task(send_debug(self.bot, f"private_key startswith: {private_key.startswith('-----BEGIN PRIVATE KEY-----')}"))
         asyncio.create_task(send_debug(self.bot, f"private_key endswith: {private_key.endswith('-----END PRIVATE KEY-----')}"))
