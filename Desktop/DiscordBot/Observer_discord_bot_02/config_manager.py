@@ -33,7 +33,7 @@ class ConfigManager:
         # ----------- サービスアカウント鍵を環境変数から再構築 -------------
         key_lines = []
         for i in range(1, 100):
-            env_name = f"SERVICE_KEY_LINE_{i:02}"  # SERVICE_KEY_LINE_01, 02...
+            env_name = f"SERVICE_KEY_LINE_{i:02}"
             val = os.getenv(env_name)
             if not val:
                 break
@@ -84,7 +84,6 @@ class ConfigManager:
 
     # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
-        """Google Drive から設定ファイルを取得し、ローカルに保存"""
         try:
             asyncio.create_task(send_debug(self.bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
             file = self.drive.CreateFile({"id": self.drive_file_id})
@@ -101,7 +100,6 @@ class ConfigManager:
 
     # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
-        """ローカルとGoogle Driveの両方に設定を保存"""
         if data is not None:
             self.config = data
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
@@ -117,12 +115,10 @@ class ConfigManager:
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
-        """指定ユーザーが管理者リストに含まれているか確認"""
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
     def get_pair_by_guild(self, guild_id):
-        """サーバーIDに対応するペアを取得"""
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
@@ -135,7 +131,6 @@ class ConfigManager:
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
-            """サーバー管理者として登録"""
             guild_id = ctx.guild.id
             author_id = ctx.author.id
             pair = self.get_pair_by_guild(guild_id)
@@ -144,7 +139,7 @@ class ConfigManager:
                 pair = {
                     "A_ID": None,
                     "B_ID": guild_id,
-                    "CHANNEL_MAPPING": {"A_TO_B": {}},
+                    "CHANNEL_MAPPING": {},  # ← ラベル削除
                     "ADMIN_IDS": [author_id],
                     "DEBUG_CHANNEL": ctx.channel.id,
                     "VC_LOG_CHANNEL": None,
@@ -174,7 +169,6 @@ class ConfigManager:
 
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            """現在のサービスアカウント設定を確認"""
             service_json = {
                 "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
                 "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
@@ -192,7 +186,6 @@ class ConfigManager:
 
         @bot.command(name="show")
         async def show_config(ctx: commands.Context):
-            """Google Drive 上の設定ファイル内容を表示"""
             if not self.is_admin(ctx.guild.id, ctx.author.id):
                 await ctx.send("❌ 管理者ではありません。")
                 return
