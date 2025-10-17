@@ -1,4 +1,4 @@
-# transfer_cog.py
+# 修正版 transfer_cog.py
 from discord.ext import commands
 import discord
 
@@ -25,18 +25,21 @@ class TransferCog(commands.Cog):
             fallback_channel=message.channel
         )
 
+        # サーバーペアを取得（Aサーバーから探す）
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
             await self.bot.process_commands(message)
             return
 
-        dest_id = pair["CHANNEL_MAPPING"]["A_TO_B"].get(str(message.channel.id))
+        # CHANNEL_MAPPINGから転送先チャンネルを取得
+        dest_id = pair["CHANNEL_MAPPING"].get(str(message.channel.id))
         if not dest_id:
             await self.bot.process_commands(message)
             return
 
+        # Bサーバーと転送先チャンネルを取得
         dest_guild = self.bot.get_guild(pair["B_ID"])
-        dest_channel = dest_guild.get_channel(dest_id)
+        dest_channel = dest_guild.get_channel(dest_id) if dest_guild else None
         if not dest_channel:
             await self.bot.process_commands(message)
             return
