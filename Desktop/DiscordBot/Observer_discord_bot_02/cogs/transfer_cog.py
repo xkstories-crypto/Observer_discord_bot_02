@@ -7,7 +7,8 @@ class TransferCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager):
         self.bot = bot
         self.config_manager = config_manager
-        asyncio.create_task(self.config_manager.send_debug(bot, "[DEBUG] TransferCog loaded"))
+        # bot を渡さず、send_debug はメッセージのみ
+        asyncio.create_task(self.config_manager.send_debug("[DEBUG] TransferCog loaded"))
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
