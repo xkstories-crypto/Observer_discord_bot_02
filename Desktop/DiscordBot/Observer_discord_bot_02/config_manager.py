@@ -4,7 +4,6 @@ import asyncio
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
-from discord import Intents
 from discord.ext import commands
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
@@ -12,6 +11,7 @@ ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))  # デバッグ送信�
 
 # ---------------------- Discord デバッグ送信 ----------------------
 async def send_debug(bot, message: str):
+    """指定された管理チャンネルまたは標準出力にデバッグメッセージを送信"""
     if ADMIN_CHANNEL_ID:
         channel = bot.get_channel(ADMIN_CHANNEL_ID)
         if channel:
@@ -21,19 +21,20 @@ async def send_debug(bot, message: str):
     else:
         print(f"[DEBUG] {message}")
 
-# ---------------------- ConfigManager ----------------------
+# ---------------------- ConfigManager クラス ----------------------
 class ConfigManager:
     def __init__(self, bot: commands.Bot, drive_file_id: str):
+        """Google Drive上の設定ファイルを管理するクラス"""
         self.bot = bot
         self.drive_file_id = drive_file_id
 
         asyncio.create_task(send_debug(self.bot, "ConfigManager 初期化開始"))
 
-        # ----------- サービスアカウント認証情報 -------------
+        # ----------- サービスアカウント鍵を環境変数から再構築 -------------
         key_lines = []
         for i in range(1, 100):
-            env_var = f"SERVICE_KEY_LINE_{i:02}"  # LINE_01, LINE_02 ...
-            val = os.getenv(env_var)
+            env_name = f"SERVICE_KEY_LINE_{i:02}"  # SERVICE_KEY_LINE_01, 02...
+            val = os.getenv(env_name)
             if not val:
                 break
             key_lines.append(val)
@@ -42,10 +43,9 @@ class ConfigManager:
             raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
 
         private_key = "\n".join(key_lines)
-
         asyncio.create_task(send_debug(self.bot, f"private_key length: {len(private_key)}"))
 
-        # ----------- service_json -------------
+        # ----------- サービスアカウントJSON組み立て -------------
         service_json = {
             "type": "service_account",
             "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
@@ -57,7 +57,7 @@ class ConfigManager:
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02%40discord-bot-project-474420.iam.gserviceaccount.com",
-            "universe_domain": "googleapis.com",
+            "universe_domain": "googleapis.com"
         }
 
         # ----------- Google Drive 認証処理 -------------
@@ -71,7 +71,7 @@ class ConfigManager:
             asyncio.create_task(send_debug(self.bot, f"GoogleAuth 認証失敗: {e}"))
             raise
 
-        # ----------- 設定ロード -------------
+        # ----------- 設定ファイルのロード -------------
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
@@ -84,6 +84,7 @@ class ConfigManager:
 
     # ---------------------------- 設定ロード ----------------------------
     def load_config(self):
+        """Google Drive から設定ファイルを取得し、ローカルに保存"""
         try:
             asyncio.create_task(send_debug(self.bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
             file = self.drive.CreateFile({"id": self.drive_file_id})
@@ -100,10 +101,12 @@ class ConfigManager:
 
     # ---------------------------- 設定保存 ----------------------------
     def save_config(self, data=None):
-        if data is None:
-            data = self.config
+        """ローカルとGoogle Driveの両方に設定を保存"""
+        if data is not None:
+            self.config = data
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
+
         try:
             file = self.drive.CreateFile({"id": self.drive_file_id})
             file.SetContentFile(CONFIG_LOCAL_PATH)
@@ -114,11 +117,14 @@ class ConfigManager:
 
     # ---------------------------- 管理者チェック ----------------------------
     def is_admin(self, guild_id, user_id):
-        return True
+        """指定ユーザーが管理者リストに含まれているか確認"""
+        pair = self.get_pair_by_guild(guild_id)
+        return pair and user_id in pair.get("ADMIN_IDS", [])
 
     def get_pair_by_guild(self, guild_id):
+        """サーバーIDに対応するペアを取得"""
         for pair in self.config.get("server_pairs", []):
-            if pair.get("guild_id") == guild_id:
+            if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
 
@@ -129,17 +135,35 @@ class ConfigManager:
 
         @bot.command(name="adomin")
         async def adomin(ctx: commands.Context):
-            await ctx.send("✅ adomin コマンドが正常に動作しています。")
+            """サーバー管理者として登録"""
+            guild_id = ctx.guild.id
+            author_id = ctx.author.id
+            pair = self.get_pair_by_guild(guild_id)
 
-        @bot.command(name="set_server")
-        async def set_server(ctx: commands.Context, target_guild_id: int):
-            pair = self.get_pair_by_guild(ctx.guild.id)
-            if pair:
-                pair["target_guild_id"] = target_guild_id
+            if not pair:
+                pair = {
+                    "A_ID": None,
+                    "B_ID": guild_id,
+                    "CHANNEL_MAPPING": {"A_TO_B": {}},
+                    "ADMIN_IDS": [author_id],
+                    "DEBUG_CHANNEL": ctx.channel.id,
+                    "VC_LOG_CHANNEL": None,
+                    "AUDIT_LOG_CHANNEL": None,
+                    "OTHER_CHANNEL": None,
+                    "READ_USERS": []
+                }
+                self.config["server_pairs"].append(pair)
                 self.save_config()
-                await ctx.send("✅ 対応サーバーを設定しました。")
-            else:
-                await ctx.send("⚠️ このサーバーからは対応サーバーの設定を行えません。")
+                await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
+                return
+
+            if author_id in pair.get("ADMIN_IDS", []):
+                await ctx.send("⚠️ すでに管理者として登録されています。")
+                return
+
+            pair["ADMIN_IDS"].append(author_id)
+            self.save_config()
+            await ctx.send(f"✅ {ctx.author.name} を管理者登録しました。")
 
         asyncio.create_task(send_debug(bot, "通常コマンド登録完了"))
 
@@ -150,6 +174,7 @@ class ConfigManager:
 
         @bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
+            """現在のサービスアカウント設定を確認"""
             service_json = {
                 "project_id": os.getenv("PROJECT_ID", "discord-bot-project-474420"),
                 "client_email": os.getenv("CLIENT_EMAIL", "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com"),
@@ -167,6 +192,11 @@ class ConfigManager:
 
         @bot.command(name="show")
         async def show_config(ctx: commands.Context):
+            """Google Drive 上の設定ファイル内容を表示"""
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
             try:
                 asyncio.create_task(send_debug(bot, f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 file = self.drive.CreateFile({"id": self.drive_file_id})
@@ -175,8 +205,8 @@ class ConfigManager:
 
                 with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
                     config = json.load(f)
-                json_text = json.dumps(config, indent=2, ensure_ascii=False)
 
+                json_text = json.dumps(config, indent=2, ensure_ascii=False)
                 if len(json_text) < 1900:
                     await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
                 else:
@@ -186,16 +216,3 @@ class ConfigManager:
             except Exception as e:
                 asyncio.create_task(send_debug(bot, f"JSON 読み込みに失敗: {e}"))
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
-
-# ---------------------- Bot 起動 ----------------------
-intents = Intents.default()
-intents.guilds = True
-intents.messages = True
-intents.message_content = True  # コマンドで必要
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Drive ファイルIDを指定して ConfigManager 初期化
-config_manager = ConfigManager(bot, drive_file_id="1XKcqX--KPZ1qBSxYXhc_YRP-RSHqyszx")
-
-bot.run(os.getenv("DISCORD_TOKEN"))
