@@ -7,60 +7,57 @@ class TransferCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager):
         self.bot = bot
         self.config_manager = config_manager
-        # bot を渡さず、send_debug はメッセージのみ
+        # Cog読み込みログ
         asyncio.create_task(self.config_manager.send_debug("[DEBUG] TransferCog loaded"))
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Aサーバー→Bサーバーのメッセージ転送処理"""
-        if message.author.bot or not message.guild:
+        """Aサーバー→Bサーバー 転送デバッグ付き"""
+        if not message.guild:
             return
 
+        # Botのメッセージもログに残す
         await self.config_manager.send_debug(
-            f"受信: guild={message.guild.name} ({message.guild.id}), "
+            f"[DEBUG] on_message トリガー: guild={message.guild.name} ({message.guild.id}), "
             f"channel={message.channel.name} ({message.channel.id}), "
-            f"author={message.author.display_name}, content={message.content}",
+            f"author={message.author.display_name}, content='{message.content}'",
             fallback_channel=message.channel
         )
 
         # サーバーペアを取得（AサーバーIDで）
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
-            await message.channel.send("⚠️ このサーバーは転送ペアに登録されていません。")
-            await self.bot.process_commands(message)
+            await message.channel.send("⚠️ 転送ペア未登録です（get_pair_by_a が None）")
             return
-
         await message.channel.send(f"[DEBUG] ペア取得: A_ID={pair.get('A_ID')} → B_ID={pair.get('B_ID')}")
 
         # 転送先チャンネルIDを取得
         dest_id = pair.get("CHANNEL_MAPPING", {}).get(str(message.channel.id))
         if not dest_id:
-            await message.channel.send("⚠️ このチャンネルには対応する転送先が設定されていません。")
-            await self.bot.process_commands(message)
+            await message.channel.send("⚠️ CHANNEL_MAPPING にこのチャンネルの対応先がありません")
             return
-
         await message.channel.send(f"[DEBUG] 転送先チャンネルID: {dest_id}")
 
-        # Bサーバーと転送先チャンネルを取得
+        # Bサーバー取得
         dest_guild = self.bot.get_guild(pair.get("B_ID"))
         if not dest_guild:
             await message.channel.send(f"⚠️ Bサーバーが見つかりません（ID: {pair.get('B_ID')}）")
-            await self.bot.process_commands(message)
             return
 
+        # Bサーバーのチャンネル取得
         dest_channel = dest_guild.get_channel(dest_id)
         if not dest_channel:
             await message.channel.send(f"⚠️ 転送先チャンネルが見つかりません（ID: {dest_id}）")
-            await self.bot.process_commands(message)
             return
-
         await message.channel.send(f"[DEBUG] 転送先チャンネル取得: {dest_channel.name} ({dest_channel.id})")
 
         # 転送処理
+        content = message.content.strip()
+        if not content:
+            await message.channel.send("⚠️ メッセージが空なので転送しません")
+            return
+
         try:
-            content = message.content.strip()
-            if not content:
-                return  # 空メッセージは転送しない
             await dest_channel.send(f"[転送] {message.author.display_name}: {content}")
             await message.channel.send(f"✅ 転送完了 → {dest_channel.name} ({dest_channel.id})")
             await self.config_manager.send_debug(
