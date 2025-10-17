@@ -122,6 +122,10 @@ class ConfigManager:
             if pair.get("guild_id") == guild_id:
                 return pair
         return None
+    # ---------------------------- 管理者チェック ----------------------------
+    def is_admin(self, guild_id, user_id):
+        # 一時的に全員管理者扱い
+        return True
 
     # ---------------------------- 通常コマンド登録 ----------------------------
     def register_commands(self):
