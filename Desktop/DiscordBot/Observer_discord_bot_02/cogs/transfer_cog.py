@@ -7,6 +7,7 @@ class TransferCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager):
         self.bot = bot
         self.config_manager = config_manager
+        # Cogロード時にDEBUG送信
         asyncio.create_task(self.config_manager.send_debug("[DEBUG] TransferCog loaded"))
 
     @commands.Cog.listener()
@@ -55,19 +56,20 @@ class TransferCog(commands.Cog):
 
         # ---------------------- 転送処理 ----------------------
         try:
-            content = message.content.strip()
-
-            # 1. テキスト・リンクはEmbedで送信
-            if content:
-                embed = discord.Embed(description=content)
-                embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
+            # 1. message.content がある場合 → Embed 送信
+            if message.content.strip():
+                embed = discord.Embed(description=message.content)
+                embed.set_author(
+                    name=message.author.display_name,
+                    icon_url=message.author.display_avatar.url
+                )
                 await dest_channel.send(embed=embed)
                 await self.config_manager.send_debug(
                     f"テキスト転送完了: {message.channel.id} → {dest_channel.id}",
                     fallback_channel=message.channel
                 )
 
-            # 2. 添付ファイル・画像・動画は別送信
+            # 2. 添付ファイルは Embed とは別で送信
             for att in message.attachments:
                 file = await att.to_file()
                 await dest_channel.send(file=file)
