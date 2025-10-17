@@ -11,13 +11,16 @@ class TransferCog(commands.Cog):
         asyncio.create_task(self.send_debug("[DEBUG] TransferCog loaded"))
 
     async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
+        """DEBUGメッセージを送信。fallback_channel がなければ ConfigManager の DEBUG_CHANNEL を使う"""
         target_channel = fallback_channel
         if not target_channel:
+            # ConfigManager の DEBUG_CHANNEL を探す
             for pair in self.config_manager.config.get("server_pairs", []):
                 debug_id = pair.get("DEBUG_CHANNEL")
                 if debug_id:
                     target_channel = self.bot.get_channel(debug_id)
                     break
+
         if target_channel:
             try:
                 await target_channel.send(f"[DEBUG] {message}")
@@ -28,6 +31,7 @@ class TransferCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        """Aサーバー→Bサーバーのメッセージ転送処理"""
         if message.author.bot or not message.guild:
             return
 
@@ -38,18 +42,25 @@ class TransferCog(commands.Cog):
             fallback_channel=message.channel
         )
 
+        # サーバーペアを取得（AサーバーIDで）
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
             await self.send_debug(f"このサーバーは転送ペアに登録されていません", fallback_channel=message.channel)
             await self.bot.process_commands(message)
             return
 
+        await self.send_debug(f"ペア取得: A_ID={pair.get('A_ID')} → B_ID={pair.get('B_ID')}", fallback_channel=message.channel)
+
+        # 転送先チャンネルIDを取得
         dest_id = pair.get("CHANNEL_MAPPING", {}).get(str(message.channel.id))
         if not dest_id:
             await self.send_debug("このチャンネルには対応する転送先が設定されていません", fallback_channel=message.channel)
             await self.bot.process_commands(message)
             return
 
+        await self.send_debug(f"転送先チャンネルID: {dest_id}", fallback_channel=message.channel)
+
+        # Bサーバーと転送先チャンネルを取得
         dest_guild = self.bot.get_guild(pair.get("B_ID"))
         if not dest_guild:
             await self.send_debug(f"Bサーバーが見つかりません（ID: {pair.get('B_ID')}）", fallback_channel=message.channel)
@@ -62,25 +73,21 @@ class TransferCog(commands.Cog):
             await self.bot.process_commands(message)
             return
 
+        await self.send_debug(f"転送先チャンネル取得: {dest_channel.name} ({dest_channel.id})", fallback_channel=message.channel)
+
         # ---------------------- 転送処理 ----------------------
         try:
-            content = message.content.strip()
+            # 1. テキストやリンクがある場合はEmbedで送信
+            if message.content.strip():
+                embed = discord.Embed(description=message.content.strip())
+                embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
+                await dest_channel.send(embed=embed)
+                await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
 
-            # 1. テキストはEmbedで送信（リンクだけなら通常メッセージ）
-            if content:
-                if content.startswith("http://") or content.startswith("https://"):
-                    await dest_channel.send(f"{message.author.display_name}\n{content}")
-                    await self.send_debug(f"リンク転送完了: {content}", fallback_channel=message.channel)
-                else:
-                    embed = discord.Embed(description=content)
-                    embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
-                    await dest_channel.send(embed=embed)
-                    await self.send_debug(f"テキストEmbed転送完了", fallback_channel=message.channel)
-
-            # 2. 添付ファイル・画像・動画は別送信
+            # 2. 添付ファイル（画像・動画・その他）はEmbedとは別に送信
             for att in message.attachments:
                 file = await att.to_file()
-                await dest_channel.send(f"{message.author.display_name}", file=file)
+                await dest_channel.send(file=file)
                 await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
 
         except Exception as e:
@@ -90,10 +97,12 @@ class TransferCog(commands.Cog):
 
     @commands.command(name="debug_test")
     async def debug_test(self, ctx: commands.Context):
+        """デバッグ送信テストコマンド"""
         await self.send_debug("⚡デバッグ送信テスト⚡", fallback_channel=ctx.channel)
         await ctx.send("デバッグ送信を実行しました ✅")
 
 async def setup(bot: commands.Bot):
+    """Cogセットアップ"""
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
         raise RuntimeError("ConfigManager が bot にセットされていません")
