@@ -77,18 +77,24 @@ class TransferCog(commands.Cog):
 
         # ---------------------- 転送処理 ----------------------
         try:
-            # 1. テキストやリンクがある場合はEmbedで送信
-            if message.content.strip():
-                embed = discord.Embed(description=message.content.strip())
+            content = message.content.strip()
+
+            # 1. 全てEmbedで送信（テキスト・リンク・添付ファイルURL）
+            embed_description = content if content else ""
+            for att in message.attachments:
+                embed_description += f"\n{att.url}"
+
+            if embed_description:
+                embed = discord.Embed(description=embed_description)
                 embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
                 await dest_channel.send(embed=embed)
                 await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
 
-            # 2. 添付ファイル（画像・動画・その他）はEmbedとは別に送信
+            # 2. 添付ファイルはEmbed送信の後に別送信
             for att in message.attachments:
                 file = await att.to_file()
                 await dest_channel.send(file=file)
-                await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
+                await self.send_debug(f"添付ファイル別送信完了: {att.filename}", fallback_channel=message.channel)
 
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
