@@ -137,7 +137,7 @@ class ConfigManager:
                 await ctx.send("⚠️ Bot が両方のサーバーに参加しているか確認してください。")
                 return
 
-            # --- 固定チャンネル先取り ---
+            # --- 固定チャンネルをBサーバーに作成（存在しなければ作成） ---
             fixed_channels = {
                 "DEBUG_CHANNEL": pair.get("DEBUG_CHANNEL"),
                 "VC_LOG_CHANNEL": pair.get("VC_LOG_CHANNEL"),
@@ -145,6 +145,13 @@ class ConfigManager:
                 "OTHER_CHANNEL": pair.get("OTHER_CHANNEL")
             }
 
+            for key, ch_id in fixed_channels.items():
+                if ch_id is None:
+                    # 新規作成
+                    new_channel = await guild_b.create_text_channel(name=key)
+                    pair[key] = new_channel.id
+
+            # --- Aサーバーのチャンネルをコピー ---
             for channel in guild_a.channels:
                 # 既にマッピング済みならスキップ
                 if str(channel.id) in pair["CHANNEL_MAPPING"]:
@@ -214,7 +221,6 @@ class ConfigManager:
 
         @self.bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            # 管理者チェックを削除
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
         asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
@@ -225,7 +231,6 @@ class ConfigManager:
 
         @self.bot.command(name="show")
         async def show_config(ctx: commands.Context):
-            # 管理者チェックを削除
             try:
                 asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 self.drive_handler.download_config(CONFIG_LOCAL_PATH)
