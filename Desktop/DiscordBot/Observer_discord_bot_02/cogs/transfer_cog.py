@@ -69,9 +69,18 @@ class TransferCog(commands.Cog):
 
         # ---------------------- 転送処理 ----------------------
         try:
-            # 1. Embed 送信（テキスト・リンク・メンションも含む）
-            if message.content.strip() or message.mentions or message.role_mentions:
-                embed = discord.Embed(description=message.content or " ")
+            content = message.content.strip()
+
+            # Embed 内用テキスト作成（メンションは名前だけに置換）
+            embed_text = content or " "
+            for role in message.role_mentions:
+                embed_text = embed_text.replace(f"<@&{role.id}>", f"@{role.name}")
+            for user in message.mentions:
+                embed_text = embed_text.replace(f"<@{user.id}>", f"@{user.display_name}")
+
+            # 1. Embed送信（テキスト・リンク・見た目用メンション）
+            if embed_text.strip():
+                embed = discord.Embed(description=embed_text)
                 embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
                 await dest_channel.send(embed=embed)
                 await self.send_debug(f"Embed転送完了: {message.channel.id} → {dest_channel.id}", fallback_channel=message.channel)
@@ -82,18 +91,15 @@ class TransferCog(commands.Cog):
                 await dest_channel.send(file=file)
                 await self.send_debug(f"添付ファイル転送完了: {att.filename}", fallback_channel=message.channel)
 
-            # 3. メンションは別で通知（Embedとは別）
+            # 3. 実際のメンション通知は別で送信
             mention_text = ""
             for user in message.mentions:
                 mention_text += user.mention + " "
             for role in message.role_mentions:
-                # 転送先サーバーに同名ロールがある場合のみ通知
-                dest_role = discord.utils.get(dest_guild.roles, name=role.name)
-                if dest_role:
-                    mention_text += dest_role.mention + " "
-            if mention_text.strip():
+                mention_text += role.mention + " "
+            if mention_text:
                 await dest_channel.send(mention_text.strip())
-                await self.send_debug(f"メンション転送完了: {mention_text.strip()}", fallback_channel=message.channel)
+                await self.send_debug(f"メンション通知転送完了: {mention_text}", fallback_channel=message.channel)
 
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
