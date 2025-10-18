@@ -53,8 +53,8 @@ async def main():
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
-            "google.cogs.drive_cog",
-            "google.cogs.sa_cog"
+            "google_api.cogs.drive_cog",
+            "google_api.cogs.sa_cog"
         ]
         for cog_path in cogs:
             try:
