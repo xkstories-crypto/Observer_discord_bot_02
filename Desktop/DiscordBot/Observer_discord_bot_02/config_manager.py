@@ -29,9 +29,6 @@ class ConfigManager:
 
         # --- コマンド登録 ---
         self.register_commands()
-        self.register_sa_check_command(service_json)
-        self.register_drive_show_command()
-
         asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
 
     # ------------------------ デバッグ送信 ------------------------
