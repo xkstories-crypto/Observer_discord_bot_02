@@ -13,8 +13,8 @@ class DriveCog(commands.Cog):
         if not self.config_manager:
             raise RuntimeError("ConfigManager が bot にセットされていません")
 
-    @commands.command(name="show_config")
-    async def show_config(self, ctx: commands.Context):
+    @commands.command(name="show_show")
+    async def show(self, ctx: commands.Context):
         """Google Drive 上の設定 JSON を表示"""
         if not self.config_manager.is_admin(ctx.guild.id, ctx.author.id):
             await ctx.send("❌ 管理者ではありません。")
