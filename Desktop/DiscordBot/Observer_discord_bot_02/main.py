@@ -1,4 +1,3 @@
-# main.py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -6,7 +5,6 @@ import discord
 from discord.ext import commands
 import traceback
 import asyncio
-import json
 from config_manager import ConfigManager  # Google Drive対応版
 
 # ---------- 環境変数からトークン取得 ----------
@@ -55,6 +53,8 @@ async def main():
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
+            "google.cogs.drive_cog",
+            "google.cogs.sa_cog"
         ]
         for cog_path in cogs:
             try:
