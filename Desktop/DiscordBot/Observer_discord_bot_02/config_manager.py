@@ -2,70 +2,39 @@
 import os
 import json
 import asyncio
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
-from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 import discord
+from google.sa_utils import build_service_account_json
+from google.drive_handler import DriveHandler
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))
 
+
 class ConfigManager:
+    """Bot設定を管理し、Google Driveと同期するクラス"""
+
     def __init__(self, bot: commands.Bot, drive_file_id: str):
         self.bot = bot
         self.drive_file_id = drive_file_id
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化開始"))
 
-        # 環境変数から private_key を復元
-        key_lines = []
-        for i in range(1, 100):
-            env_name = f"SERVICE_KEY_LINE_{i:02}"
-            val = os.getenv(env_name)
-            if not val:
-                break
-            key_lines.append(val)
-
-        if not key_lines:
-            raise ValueError("SERVICE_KEY_LINE_01 以降の環境変数が設定されていません。")
-
-        private_key = "\n".join(key_lines)
-
-        # サービスアカウント JSON 組み立て（固定値＋ private_key 使用）
-        service_json = {
-            "type": "service_account",
-            "project_id": "discord-bot-project-474420",
-            "private_key_id": "a087f21ff4c7c86974680eb6605168d176d51e23",
-            "private_key": private_key,
-            "client_email": "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
-            "client_id": "105596180367786843413",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
-            "universe_domain": "googleapis.com"
-        }
-
-        try:
-            self.gauth = GoogleAuth()
-            scope = ["https://www.googleapis.com/auth/drive"]
-            self.gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(service_json, scopes=scope)
-            self.drive = GoogleDrive(self.gauth)
-            asyncio.create_task(self.send_debug("GoogleAuth 認証成功"))
-        except Exception as e:
-            asyncio.create_task(self.send_debug(f"GoogleAuth 認証失敗: {e}"))
-            raise
+        # --- Google Drive初期化 ---
+        service_json = build_service_account_json()
+        self.drive_handler = DriveHandler(service_json, self.drive_file_id)
 
         os.makedirs("data", exist_ok=True)
         self.config = self.load_config()
 
+        # --- コマンド登録 ---
         self.register_commands()
-        self.register_sa_check_command(private_key)
+        self.register_sa_check_command(service_json)
         self.register_drive_show_command()
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
 
+    # ------------------------ デバッグ送信 ------------------------
     async def send_debug(self, message: str):
         if ADMIN_CHANNEL_ID:
             channel = self.bot.get_channel(ADMIN_CHANNEL_ID)
@@ -76,13 +45,12 @@ class ConfigManager:
         else:
             print(f"[DEBUG] {message}")
 
+    # ------------------------ 設定の読み書き ------------------------
     def load_config(self):
         try:
-            file = self.drive.CreateFile({"id": self.drive_file_id})
-            file.GetContentFile(CONFIG_LOCAL_PATH)
+            self.drive_handler.download_config(CONFIG_LOCAL_PATH)
             with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            return config
+                return json.load(f)
         except Exception:
             default = {"server_pairs": []}
             self.save_config(default)
@@ -94,30 +62,28 @@ class ConfigManager:
         with open(CONFIG_LOCAL_PATH, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
         try:
-            file = self.drive.CreateFile({"id": self.drive_file_id})
-            file.SetContentFile(CONFIG_LOCAL_PATH)
-            file.Upload()
+            self.drive_handler.upload_config(CONFIG_LOCAL_PATH)
         except Exception as e:
             print(f"[WARN] Google Drive アップロード失敗: {e}")
 
-    # ------------------------ ペア取得 ------------------------
-    def get_pair_by_guild(self, guild_id):
+    # ------------------------ データ取得ヘルパ ------------------------
+    def get_pair_by_guild(self, guild_id: int):
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == guild_id or pair.get("B_ID") == guild_id:
                 return pair
         return None
 
-    def get_pair_by_a(self, a_id):
+    def get_pair_by_a(self, a_id: int):
         for pair in self.config.get("server_pairs", []):
             if pair.get("A_ID") == a_id:
                 return pair
         return None
 
-    def is_admin(self, guild_id, user_id):
+    def is_admin(self, guild_id: int, user_id: int):
         pair = self.get_pair_by_guild(guild_id)
         return pair and user_id in pair.get("ADMIN_IDS", [])
 
-    # ------------------------ コマンド登録 ------------------------
+    # ------------------------ Discord コマンド登録 ------------------------
     def register_commands(self):
         bot = self.bot
 
@@ -190,25 +156,11 @@ class ConfigManager:
             await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
 
     # ---------------------------- SA チェックコマンド ----------------------------
-    def register_sa_check_command(self, private_key: str):
+    def register_sa_check_command(self, service_json: dict):
         asyncio.create_task(self.send_debug("SA チェックコマンド登録開始"))
 
         @self.bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            service_json = {
-                "type": "service_account",
-                "project_id": "discord-bot-project-474420",
-                "private_key_id": "a087f21ff4c7c86974680eb6605168d176d51e23",
-                "private_key": private_key,  # ← dynamic
-                "client_email": "observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
-                "client_id": "105596180367786843413",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/observer-discord-bot-02@discord-bot-project-474420.iam.gserviceaccount.com",
-                "universe_domain": "googleapis.com"
-            }
-
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
         asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
@@ -225,8 +177,7 @@ class ConfigManager:
 
             try:
                 asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
-                file = self.drive.CreateFile({"id": self.drive_file_id})
-                file.GetContentFile(CONFIG_LOCAL_PATH)
+                self.drive_handler.download_config(CONFIG_LOCAL_PATH)
                 asyncio.create_task(self.send_debug(f"ファイル取得成功: {CONFIG_LOCAL_PATH}"))
 
                 with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
