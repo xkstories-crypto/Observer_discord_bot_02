@@ -29,6 +29,8 @@ class ConfigManager:
 
         # --- コマンド登録 ---
         self.register_commands()
+        self.register_sa_check_command(service_json)
+        self.register_drive_show_command()
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
 
@@ -135,10 +137,22 @@ class ConfigManager:
                 await ctx.send("⚠️ Bot が両方のサーバーに参加しているか確認してください。")
                 return
 
+            # --- 固定チャンネル先取り ---
+            fixed_channels = {
+                "DEBUG_CHANNEL": pair.get("DEBUG_CHANNEL"),
+                "VC_LOG_CHANNEL": pair.get("VC_LOG_CHANNEL"),
+                "AUDIT_LOG_CHANNEL": pair.get("AUDIT_LOG_CHANNEL"),
+                "OTHER_CHANNEL": pair.get("OTHER_CHANNEL")
+            }
+
             for channel in guild_a.channels:
+                # 既にマッピング済みならスキップ
+                if str(channel.id) in pair["CHANNEL_MAPPING"]:
+                    continue
+
                 if isinstance(channel, discord.CategoryChannel):
-                    cat = await guild_b.create_category(name=channel.name)
-                    pair["CHANNEL_MAPPING"][str(channel.id)] = cat.id
+                    new_cat = await guild_b.create_category(name=channel.name)
+                    pair["CHANNEL_MAPPING"][str(channel.id)] = new_cat.id
                 elif isinstance(channel, discord.TextChannel):
                     category_id = pair["CHANNEL_MAPPING"].get(str(channel.category_id))
                     cat = guild_b.get_channel(category_id) if category_id else None
@@ -152,3 +166,40 @@ class ConfigManager:
 
             self.save_config()
             await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
+
+    # ---------------------------- SA チェックコマンド ----------------------------
+    def register_sa_check_command(self, service_json: dict):
+        asyncio.create_task(self.send_debug("SA チェックコマンド登録開始"))
+
+        @self.bot.command(name="check_sa")
+        async def check_sa(ctx: commands.Context):
+            # 管理者チェックを削除
+            await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
+
+        asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
+
+    # ---------------------------- Google Drive JSON 表示コマンド ----------------------------
+    def register_drive_show_command(self):
+        asyncio.create_task(self.send_debug("Google Drive JSON 表示コマンド登録開始"))
+
+        @self.bot.command(name="show")
+        async def show_config(ctx: commands.Context):
+            # 管理者チェックを削除
+            try:
+                asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
+                self.drive_handler.download_config(CONFIG_LOCAL_PATH)
+                asyncio.create_task(self.send_debug(f"ファイル取得成功: {CONFIG_LOCAL_PATH}"))
+
+                with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+
+                json_text = json.dumps(config, indent=2, ensure_ascii=False)
+                if len(json_text) < 1900:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON\n```json\n{json_text}\n```")
+                else:
+                    await ctx.send(f"✅ Google Drive 上の設定 JSON（先頭のみ表示）\n```json\n{json_text[:1900]}...\n```")
+
+                asyncio.create_task(self.send_debug("show コマンド実行完了"))
+            except Exception as e:
+                asyncio.create_task(self.send_debug(f"JSON 読み込みに失敗: {e}"))
+                await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
