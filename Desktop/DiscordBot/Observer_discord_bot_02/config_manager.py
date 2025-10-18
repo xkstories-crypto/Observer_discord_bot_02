@@ -167,6 +167,47 @@ class ConfigManager:
             self.save_config()
             await ctx.send("✅ Aサーバーのチャンネル構造をBサーバーにコピーしました。")
 
+        # ---------------------------- 今回用: マッピング外チャンネル削除 ----------------------------
+        @bot.command(name="cleanup_unmapped")
+        async def cleanup_unmapped(ctx: commands.Context):
+            """
+            ⚠️ 今回用コマンド: Bサーバーのマッピングされていないチャンネルを削除する
+            後で消す
+            """
+            pair = self.get_pair_by_guild(ctx.guild.id)
+            if not pair:
+                await ctx.send("⚠️ ペア情報がありません。")
+                return
+
+            guild_b = self.bot.get_guild(pair["B_ID"])
+            if not guild_b:
+                await ctx.send("⚠️ Bサーバーが見つかりません。")
+                return
+
+            # 固定チャンネルは削除しない
+            protected_channels = {
+                pair.get("DEBUG_CHANNEL"),
+                pair.get("VC_LOG_CHANNEL"),
+                pair.get("AUDIT_LOG_CHANNEL"),
+                pair.get("OTHER_CHANNEL"),
+            }
+
+            # マッピング済みチャンネルID
+            mapped_ids = set(pair["CHANNEL_MAPPING"].values())
+            all_protected = mapped_ids.union(protected_channels)
+
+            deleted_count = 0
+            for channel in guild_b.channels:
+                if channel.id in all_protected:
+                    continue  # マッピング済み・固定は削除しない
+                try:
+                    await channel.delete(reason="今回用: マッピング外チャンネル削除")
+                    deleted_count += 1
+                except Exception as e:
+                    await ctx.send(f"⚠️ {channel.name} の削除失敗: {e}")
+
+            await ctx.send(f"✅ マッピング外チャンネルを {deleted_count} 個削除しました。")
+
     # ---------------------------- SA チェックコマンド ----------------------------
     def register_sa_check_command(self, service_json: dict):
         asyncio.create_task(self.send_debug("SA チェックコマンド登録開始"))
