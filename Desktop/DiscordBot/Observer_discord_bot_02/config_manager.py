@@ -1,4 +1,3 @@
-
 # config_manager.py
 import os
 import json
@@ -32,6 +31,7 @@ class ConfigManager:
         self.register_commands()
         self.register_sa_check_command(service_json)
         self.register_drive_show_command()
+        self.register_debug_all_full_command()
 
         asyncio.create_task(self.send_debug("ConfigManager 初期化完了"))
 
@@ -79,10 +79,6 @@ class ConfigManager:
             if pair.get("A_ID") == a_id:
                 return pair
         return None
-
-    def is_admin(self, guild_id: int, user_id: int):
-        pair = self.get_pair_by_guild(guild_id)
-        return pair and user_id in pair.get("ADMIN_IDS", [])
 
     # ------------------------ Discord コマンド登録 ------------------------
     def register_commands(self):
@@ -162,6 +158,7 @@ class ConfigManager:
 
         @self.bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
+            # 管理者チェックを削除
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
         asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
@@ -172,10 +169,7 @@ class ConfigManager:
 
         @self.bot.command(name="show")
         async def show_config(ctx: commands.Context):
-            if not self.is_admin(ctx.guild.id, ctx.author.id):
-                await ctx.send("❌ 管理者ではありません。")
-                return
-
+            # 管理者チェックを削除
             try:
                 asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 self.drive_handler.download_config(CONFIG_LOCAL_PATH)
@@ -194,3 +188,33 @@ class ConfigManager:
             except Exception as e:
                 asyncio.create_task(self.send_debug(f"JSON 読み込みに失敗: {e}"))
                 await ctx.send(f"⚠️ JSON 読み込みに失敗しました: {e}")
+
+    # ---------------------------- debug_all_full コマンド ----------------------------
+    def register_debug_all_full_command(self):
+        asyncio.create_task(self.send_debug("debug_all_full コマンド登録開始"))
+
+        @self.bot.command(name="debug_all_full")
+        async def debug_all_full(ctx: commands.Context):
+            # 管理者チェックを削除
+            local_text = json.dumps(self.config, indent=2, ensure_ascii=False)
+
+            # Google Drive 上の config
+            try:
+                self.drive_handler.download_config("tmp_config.json")
+                with open("tmp_config.json", "r", encoding="utf-8") as f:
+                    drive_config = json.load(f)
+                drive_text = json.dumps(drive_config, indent=2, ensure_ascii=False)
+            except Exception as e:
+                drive_text = f"⚠️ Google Drive 読み込み失敗: {e}"
+
+            CHUNK_SIZE = 1800
+
+            await ctx.send("✅ **ローカル設定**")
+            for i in range(0, len(local_text), CHUNK_SIZE):
+                await ctx.send(f"```json\n{local_text[i:i+CHUNK_SIZE]}\n```")
+
+            await ctx.send("✅ **Google Drive 設定**")
+            for i in range(0, len(drive_text), CHUNK_SIZE):
+                await ctx.send(f"```json\n{drive_text[i:i+CHUNK_SIZE]}\n```")
+
+        asyncio.create_task(self.send_debug("debug_all_full コマンド登録完了"))
