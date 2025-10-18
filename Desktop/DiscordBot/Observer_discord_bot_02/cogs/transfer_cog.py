@@ -82,12 +82,11 @@ class TransferCog(commands.Cog):
             for role in message.role_mentions:
                 embed_text = embed_text.replace(f"<@&{role.id}>", f"@{role.name}")
 
-            # ===== おしゃれEmbed生成 =====
-            embed = discord.Embed(
-                description=embed_text,
-                color=discord.Color.blurple()
-            )
-            embed.set_footer(text=f"送信元: {message.guild.name} | #{message.channel.name}")
+            # ===== おしゃれEmbed生成（ユーザーごとに色変化） =====
+            color_seed = (hash(message.author.id) % 0xFFFFFF)
+            embed_color = discord.Color(color_seed)
+
+            embed = discord.Embed(description=embed_text, color=embed_color)
             try:
                 embed.set_author(
                     name=message.author.display_name,
