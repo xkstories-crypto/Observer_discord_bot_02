@@ -40,6 +40,13 @@ class TransferCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        # --- まずコマンドを優先処理 ---
+        ctx = await self.bot.get_context(message)
+        if ctx.valid:
+            await self.bot.process_commands(message)
+            # 転送処理も続けたい場合は return しない
+            # return  ← 元の処理を止めたくなければコメントアウト
+
         await self.send_debug(
             f"受信: guild={message.guild.name} ({message.guild.id}), "
             f"channel={message.channel.name} ({message.channel.id}), "
@@ -50,25 +57,21 @@ class TransferCog(commands.Cog):
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
             await self.send_debug("このサーバーは転送ペアに登録されていません", fallback_channel=message.channel)
-            await self.bot.process_commands(message)
-            return
+            return  # 転送処理はここで止める
 
         dest_id = pair.get("CHANNEL_MAPPING", {}).get(str(message.channel.id))
         if not dest_id:
             await self.send_debug("このチャンネルには対応する転送先が設定されていません", fallback_channel=message.channel)
-            await self.bot.process_commands(message)
             return
 
         dest_guild = self.bot.get_guild(pair.get("B_ID"))
         if not dest_guild:
             await self.send_debug(f"Bサーバーが見つかりません（ID: {pair.get('B_ID')}）", fallback_channel=message.channel)
-            await self.bot.process_commands(message)
             return
 
         dest_channel = dest_guild.get_channel(dest_id)
         if not dest_channel:
             await self.send_debug(f"転送先チャンネルが見つかりません（ID: {dest_id}）", fallback_channel=message.channel)
-            await self.bot.process_commands(message)
             return
 
         await self.send_debug(f"転送先チャンネル取得: {dest_channel.name} ({dest_channel.id})", fallback_channel=message.channel)
@@ -136,6 +139,7 @@ class TransferCog(commands.Cog):
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
 
+        # 最後にコマンドも再度処理
         await self.bot.process_commands(message)
 
     @commands.command(name="debug_test")
