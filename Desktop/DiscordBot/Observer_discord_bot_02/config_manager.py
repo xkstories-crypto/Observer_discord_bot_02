@@ -76,9 +76,22 @@ class ConfigManager:
                 return pair
         return None
 
-    def is_admin(self, guild_id: int, user_id: int):
+    # ------------------------ 管理者判定 ------------------------
+    def is_admin(self, guild_id: int, user_id: int, allow_no_pair: bool = False):
+        """
+        guild_id: 判定対象サーバーID
+        user_id: 判定対象ユーザーID
+        allow_no_pair: ペア未登録でも判定を True にするか
+        """
         pair = self.get_pair_by_guild(guild_id)
-        return pair and user_id in pair.get("ADMIN_IDS", [])
+        if pair:
+            return user_id in pair.get("ADMIN_IDS", [])
+        if allow_no_pair:
+            # ペア未登録の場合も全ペアのADMIN_IDSに入っていればTrue
+            for pair in self.config.get("server_pairs", []):
+                if user_id in pair.get("ADMIN_IDS", []):
+                    return True
+        return False
 
     # ------------------------ Discord コマンド登録 ------------------------
     def register_commands(self):
@@ -134,6 +147,7 @@ class ConfigManager:
                 await ctx.send("⚠️ Bot が両方のサーバーに参加しているか確認してください。")
                 return
 
+            # チャンネル構造コピー
             for channel in guild_a.channels:
                 if isinstance(channel, discord.CategoryChannel):
                     cat = await guild_b.create_category(name=channel.name)
