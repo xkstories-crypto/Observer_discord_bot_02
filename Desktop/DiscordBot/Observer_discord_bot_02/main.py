@@ -7,15 +7,13 @@ from discord.ext import commands
 import traceback
 import asyncio
 import json
-from config_manager import ConfigManager  # Google Drive版ConfigManagerを使用
+from config_manager import ConfigManager  # Google Drive対応版
 
 # ---------- 環境変数からトークン取得 ----------
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN が取得できません。")
 TOKEN = TOKEN.strip()
-print(f"Raw token repr: {repr(TOKEN)}")
-print(f"Token length: {len(TOKEN)}")
 
 # ---------- HTTPサーバー（Render用） ----------
 class Handler(BaseHTTPRequestHandler):
@@ -43,7 +41,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ---------- 非同期でBot起動 ----------
 async def main():
     async with bot:
-        # Google Drive対応 ConfigManager 初期化
+        # ConfigManager 初期化
         DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")
         if not DRIVE_FILE_ID:
             raise ValueError("DRIVE_FILE_ID が取得できません。")
@@ -66,50 +64,40 @@ async def main():
                 print(f"[❌] Failed to load {cog_path}: {e}")
                 traceback.print_exc()
 
-        # ---------- デバッグ用コマンド追加 ----------
+        # ---------- デバッグ用コマンド ----------
         @bot.command(name="debug_all_full")
         async def debug_all_full(ctx: commands.Context):
-            """管理者向け: 現在のConfigManager全データを完全に返す（分割送信）"""
+            """管理者向け: ConfigManager全データを完全に返す"""
+            guild_id = ctx.guild.id
+            author_id = ctx.author.id
+            if not bot.config_manager.is_admin(guild_id, author_id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
+            # ローカル config
+            local_config = bot.config_manager.config
+            local_text = json.dumps(local_config, indent=2, ensure_ascii=False)
+
+            # Google Drive 上の config
             try:
-                guild_id = ctx.guild.id
-                author_id = ctx.author.id
-
-                # 管理者チェック
-                if not bot.config_manager.is_admin(guild_id, author_id):
-                    await ctx.send("❌ 管理者ではありません。")
-                    return
-
-                # ローカル config
-                local_config = bot.config_manager.config
-                local_text = json.dumps(local_config, indent=2, ensure_ascii=False)
-
-                # Google Drive 上の config
-                try:
-                    file = bot.config_manager.drive.CreateFile({"id": bot.config_manager.drive_file_id})
-                    file.GetContentFile("tmp_config.json")
-                    with open("tmp_config.json", "r", encoding="utf-8") as f:
-                        drive_config = json.load(f)
-                    drive_text = json.dumps(drive_config, indent=2, ensure_ascii=False)
-                except Exception as e:
-                    drive_text = f"⚠️ Google Drive 読み込み失敗: {e}"
-
-                # Discord 1メッセージの文字数制限に対応して分割
-                CHUNK_SIZE = 1800
-
-                # ローカル設定送信
-                await ctx.send("✅ **ローカル設定**")
-                for i in range(0, len(local_text), CHUNK_SIZE):
-                    await ctx.send(f"```json\n{local_text[i:i+CHUNK_SIZE]}\n```")
-
-                # Google Drive 設定送信
-                await ctx.send("✅ **Google Drive 設定**")
-                for i in range(0, len(drive_text), CHUNK_SIZE):
-                    await ctx.send(f"```json\n{drive_text[i:i+CHUNK_SIZE]}\n```")
-
-                await ctx.send("✅ 全データ送信完了")
-
+                bot.config_manager.drive_handler.download_config("tmp_config.json")
+                with open("tmp_config.json", "r", encoding="utf-8") as f:
+                    drive_config = json.load(f)
+                drive_text = json.dumps(drive_config, indent=2, ensure_ascii=False)
             except Exception as e:
-                await ctx.send(f"⚠️ デバッグ中にエラー発生: {e}")
+                drive_text = f"⚠️ Google Drive 読み込み失敗: {e}"
+
+            CHUNK_SIZE = 1800
+
+            await ctx.send("✅ **ローカル設定**")
+            for i in range(0, len(local_text), CHUNK_SIZE):
+                await ctx.send(f"```json\n{local_text[i:i+CHUNK_SIZE]}\n```")
+
+            await ctx.send("✅ **Google Drive 設定**")
+            for i in range(0, len(drive_text), CHUNK_SIZE):
+                await ctx.send(f"```json\n{drive_text[i:i+CHUNK_SIZE]}\n```")
+
+            await ctx.send("✅ 全データ送信完了")
 
         # Bot 起動時イベント
         @bot.event
