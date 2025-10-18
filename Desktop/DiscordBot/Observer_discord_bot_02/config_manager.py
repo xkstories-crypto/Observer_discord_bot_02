@@ -1,3 +1,5 @@
+
+
 # config_manager.py
 import os
 import json
@@ -79,6 +81,10 @@ class ConfigManager:
                 return pair
         return None
 
+    def is_admin(self, guild_id: int, user_id: int):
+        pair = self.get_pair_by_guild(guild_id)
+        return pair and user_id in pair.get("ADMIN_IDS", [])
+
     # ------------------------ Discord コマンド登録 ------------------------
     def register_commands(self):
         bot = self.bot
@@ -157,7 +163,6 @@ class ConfigManager:
 
         @self.bot.command(name="check_sa")
         async def check_sa(ctx: commands.Context):
-            # 管理者チェックを削除
             await ctx.send(f"✅ SERVICE_ACCOUNT_JSON 内容\n```json\n{json.dumps(service_json, indent=2)}\n```")
 
         asyncio.create_task(self.send_debug("SA チェックコマンド登録完了"))
@@ -167,8 +172,11 @@ class ConfigManager:
         asyncio.create_task(self.send_debug("Google Drive JSON 表示コマンド登録開始"))
 
         @self.bot.command(name="show")
-        async def show(ctx: commands.Context):
-            # 管理者チェックを削除
+        async def show_config(ctx: commands.Context):
+            if not self.is_admin(ctx.guild.id, ctx.author.id):
+                await ctx.send("❌ 管理者ではありません。")
+                return
+
             try:
                 asyncio.create_task(self.send_debug(f"Google Drive からファイル取得開始: {self.drive_file_id}"))
                 self.drive_handler.download_config(CONFIG_LOCAL_PATH)
