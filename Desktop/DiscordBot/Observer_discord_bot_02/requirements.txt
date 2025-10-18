@@ -2,3 +2,6 @@ discord.py>=2.3.0
 python-dotenv>=1.0.0
 google-cloud-texttospeech
 pydrive2
+google-api-python-client
+google-api-core
+oauth2client
