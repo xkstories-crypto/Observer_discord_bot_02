@@ -40,13 +40,14 @@ class TransferCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        # --- まずコマンドを優先処理 ---
+        # ----------------------------
+        # ① まずコマンド処理
         ctx = await self.bot.get_context(message)
         if ctx.valid:
             await self.bot.process_commands(message)
-            # 転送処理も続けたい場合は return しない
-            # return  ← 元の処理を止めたくなければコメントアウト
 
+        # ----------------------------
+        # ② デバッグログ
         await self.send_debug(
             f"受信: guild={message.guild.name} ({message.guild.id}), "
             f"channel={message.channel.name} ({message.channel.id}), "
@@ -54,10 +55,12 @@ class TransferCog(commands.Cog):
             fallback_channel=message.channel
         )
 
+        # ----------------------------
+        # ③ 転送処理
         pair = self.config_manager.get_pair_by_a(message.guild.id)
         if not pair:
             await self.send_debug("このサーバーは転送ペアに登録されていません", fallback_channel=message.channel)
-            return  # 転送処理はここで止める
+            return
 
         dest_id = pair.get("CHANNEL_MAPPING", {}).get(str(message.channel.id))
         if not dest_id:
@@ -138,9 +141,6 @@ class TransferCog(commands.Cog):
 
         except Exception as e:
             await self.send_debug(f"転送失敗: {e}", fallback_channel=message.channel)
-
-        # 最後にコマンドも再度処理
-        await self.bot.process_commands(message)
 
     @commands.command(name="debug_test")
     async def debug_test(self, ctx: commands.Context):
