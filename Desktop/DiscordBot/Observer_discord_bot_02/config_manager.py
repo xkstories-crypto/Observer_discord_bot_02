@@ -5,8 +5,8 @@ import json
 import asyncio
 from discord.ext import commands
 import discord
-from google.sa_utils import build_service_account_json
-from google.drive_handler import DriveHandler
+from google_api.sa_utils import build_service_account_json
+from google_api.drive_handler import DriveHandler
 
 CONFIG_LOCAL_PATH = os.path.join("data", "config_store.json")
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", 0))
