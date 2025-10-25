@@ -49,14 +49,14 @@ async def main():
         config_manager = ConfigManager(bot, drive_file_id=DRIVE_FILE_ID)
         bot.config_manager = config_manager
 
-        # Cog のロード
+        # Cog のロード（パス修正）
         cogs = [
             "cogs.transfer_cog",
-            "cogs.vc_cog",
+            "cogs.voice_chat.vc_cog",          # 修正済
             "cogs.audit_cog",
             "cogs.owner_cog",
-            "cogs.voice_chat.vc_highlight_cog",  # 新規追加
-            "cogs.voice_chat.vc_setting_cog",    # 新規追加
+            "cogs.voice_chat.vc_highlight_cog",
+            "cogs.voice_chat.vc_setting_cog",
         ]
         for cog_path in cogs:
             try:
