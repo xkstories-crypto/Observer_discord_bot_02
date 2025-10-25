@@ -1,4 +1,3 @@
-
 # main.py
 import os
 import threading
@@ -35,7 +34,7 @@ intents.messages = True
 intents.guilds = True
 intents.members = True
 intents.message_content = True
-intents.voice_states = True
+intents.voice_states = True  # VC監視に必須
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -56,6 +55,8 @@ async def main():
             "cogs.vc_cog",
             "cogs.audit_cog",
             "cogs.owner_cog",
+            "cogs.voice_chat.vc_highlight_cog",  # 新規追加
+            "cogs.voice_chat.vc_setting_cog",    # 新規追加
         ]
         for cog_path in cogs:
             try:
@@ -109,6 +110,7 @@ async def main():
             for cmd in bot.commands:
                 print(f" - {cmd.name}")
 
+        # Bot 起動
         await bot.start(TOKEN)
 
 # ---------- 実行 ----------
