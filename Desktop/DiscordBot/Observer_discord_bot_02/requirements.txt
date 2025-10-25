@@ -5,3 +5,5 @@ pydrive2
 google-api-python-client
 google-api-core
 oauth2client
+numpy
+PyNaCl
