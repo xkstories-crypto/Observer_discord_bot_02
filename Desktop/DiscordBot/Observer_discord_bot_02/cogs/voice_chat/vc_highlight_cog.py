@@ -108,3 +108,10 @@ class VCHighlightCog(commands.Cog):
         """
         # ここでは無音のステレオPCM 960サンプル
         return (b'\x00\x00' * SAMPLES_PER_FRAME * CHANNELS)
+        
+# ---------- Cogセットアップ ----------
+async def setup(bot: commands.Bot):
+    config_manager = getattr(bot, "config_manager", None)  # bot に config_manager があれば取得
+    if not config_manager:
+        raise RuntimeError("ConfigManager が bot にセットされていません")
+    await bot.add_cog(VCHighlightCog(bot))
