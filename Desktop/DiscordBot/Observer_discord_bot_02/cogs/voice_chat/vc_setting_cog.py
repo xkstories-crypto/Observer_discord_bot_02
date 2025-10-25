@@ -52,3 +52,10 @@ class VCSettingCog(commands.Cog):
                         del self.connected_vcs[vc_id]
                     except Exception as e:
                         print(f"VC leave failed: {e}")
+
+# ---------- Cogセットアップ ----------
+async def setup(bot: commands.Bot):
+    config_manager = getattr(bot, "config_manager", None)
+    if not config_manager:
+        raise RuntimeError("ConfigManager が bot にセットされていません")
+    await bot.add_cog(VCSettingCog(bot))
