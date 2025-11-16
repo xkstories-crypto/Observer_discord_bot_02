@@ -18,7 +18,7 @@ class VcCog(commands.Cog):
         if not server_conf:
             return
 
-        server_a_id = server_conf.get("SERVER_A_ID")
+        server_a_id = server_conf.get("A_ID")
         vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
 
         if member.guild.id != server_a_id:
