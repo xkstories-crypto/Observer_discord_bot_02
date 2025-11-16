@@ -18,7 +18,8 @@ class VcCog(commands.Cog):
         if not server_conf:
             return
 
-        server_a_id = server_conf.get("A_ID")
+        # ★ここを統一
+        server_a_id = server_conf.get("SERVER_A_ID")
         vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
 
         if member.guild.id != server_a_id:
@@ -29,9 +30,13 @@ class VcCog(commands.Cog):
             return
 
         if before.channel is None and after.channel is not None:
-            await vc_log_channel.send(f"🔊 {member.display_name} が {after.channel.name} に参加しました。")
+            await vc_log_channel.send(
+                f"🔊 {member.display_name} が {after.channel.name} に参加しました。"
+            )
         elif before.channel is not None and after.channel is None:
-            await vc_log_channel.send(f"🔈 {member.display_name} が {before.channel.name} から退出しました。")
+            await vc_log_channel.send(
+                f"🔈 {member.display_name} が {before.channel.name} から退出しました。"
+            )
 
     # ---------- BサーバーからAサーバーのVC一覧を確認 ----------
     @commands.command()
@@ -41,6 +46,7 @@ class VcCog(commands.Cog):
             await ctx.send("サーバー設定が見つかりません。")
             return
 
+        # ★ここも同じキー
         server_a_id = server_conf.get("SERVER_A_ID")
         guild_a = self.bot.get_guild(server_a_id)
         if not guild_a:
