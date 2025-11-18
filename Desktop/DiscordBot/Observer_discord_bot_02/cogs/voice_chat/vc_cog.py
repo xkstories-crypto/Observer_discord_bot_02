@@ -13,8 +13,8 @@ class VcCog(commands.Cog):
         except Exception:
             print("[DEBUG] VcCog loaded")
 
+    # -------------------- DEBUG送信 --------------------
     async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
-        """ DEBUG チャンネル or フォールバックチャンネルに送信 """
         target_channel = fallback_channel
         if not target_channel:
             try:
@@ -36,40 +36,13 @@ class VcCog(commands.Cog):
 
         print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
 
-    async def send_vc_log(self, message: str, color: discord.Color = discord.Color.blue()):
-        """ VC_LOG_CHANNEL に Embed で送信 """
-        try:
-            # Aサーバーのペアを探す
-            for pair in self.config_manager.config.get("server_pairs", []):
-                vc_channel_id = pair.get("VC_LOG_CHANNEL")
-                guild_a_id = pair.get("A_ID")
-                guild_a = self.bot.get_guild(guild_a_id)
-                if not guild_a:
-                    continue
-
-                channel = guild_a.get_channel(vc_channel_id)
-                if not channel:
-                    try:
-                        # キャッシュにない場合は fetch
-                        channel = await guild_a.fetch_channel(vc_channel_id)
-                    except Exception:
-                        await self.send_debug(f"VC_LOG_CHANNEL が取得できません (ID: {vc_channel_id})")
-                        continue
-
-                if isinstance(channel, discord.TextChannel):
-                    embed = discord.Embed(description=message, color=color)
-                    await channel.send(embed=embed)
-                    return
-        except Exception as e:
-            await self.send_debug(f"VCログ送信失敗: {e}")
-
-    # ---------- VC参加/退出ログ ----------
+    # -------------------- VC参加/退出ログ --------------------
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot or not member.guild:
             return
 
-        # デバッグ送信
+        # 受信確認用DEBUG
         await self.send_debug(
             f"VC状態変化受信: member={member.display_name}, before={getattr(before.channel,'name',None)}, after={getattr(after.channel,'name',None)}"
         )
@@ -80,29 +53,76 @@ class VcCog(commands.Cog):
             return
 
         server_a_id = server_conf.get("A_ID")
+        vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
+
         if member.guild.id != server_a_id:
             await self.send_debug(f"このサーバーはAサーバーではありません (guild_id={member.guild.id})")
             return
 
-        # Embed色分けとメッセージ
+        vc_log_channel = self.bot.get_channel(vc_log_channel_id)
+        if not vc_log_channel:
+            try:
+                vc_log_channel = await self.bot.fetch_channel(vc_log_channel_id)
+            except Exception as e:
+                await self.send_debug(f"VC_LOG_CHANNEL取得失敗: {e}")
+                return
+
         try:
             if before.channel is None and after.channel is not None:
-                msg = f"🔊 **{member.display_name}** が **{after.channel.name}** に参加しました。"
-                await self.send_vc_log(msg, color=discord.Color.green())
-                await self.send_debug(f"VC参加ログ送信: {member.display_name} → {after.channel.name}")
+                # VC参加
+                embed = discord.Embed(
+                    title="VC参加",
+                    description=f"🔊 **{member.display_name}** が **{after.channel.name}** に参加しました。",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"member id: {member.id}")
+                await vc_log_channel.send(embed=embed)
+
             elif before.channel is not None and after.channel is None:
-                msg = f"🔈 **{member.display_name}** が **{before.channel.name}** から退出しました。"
-                await self.send_vc_log(msg, color=discord.Color.red())
-                await self.send_debug(f"VC退出ログ送信: {member.display_name} → {before.channel.name}")
-            else:
-                # 移動などの特殊ケースも
-                msg = f"🔄 **{member.display_name}** が VC 移動: {getattr(before.channel,'name',None)} → {getattr(after.channel,'name',None)}"
-                await self.send_vc_log(msg, color=discord.Color.orange())
-                await self.send_debug(f"VC移動ログ送信: {member.display_name} → {getattr(after.channel,'name',None)}")
+                # VC退出
+                embed = discord.Embed(
+                    title="VC退出",
+                    description=f"🔈 **{member.display_name}** が **{before.channel.name}** から退出しました。",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"member id: {member.id}")
+                await vc_log_channel.send(embed=embed)
+
         except Exception as e:
             await self.send_debug(f"VCログ送信失敗: {e}")
 
-# ---------- Cogセットアップ ----------
+    # -------------------- BサーバーからAサーバーのVC一覧 --------------------
+    @commands.command(name="debug_vc_full")
+    async def debug_vc_full(self, ctx: commands.Context):
+        await self.send_debug(f"!debug_vc_full コマンド実行 by {ctx.author.display_name}", fallback_channel=ctx.channel)
+
+        server_conf = self.config_manager.get_server_config(ctx.guild.id)
+        if not server_conf:
+            await ctx.send("サーバー設定が見つかりません。")
+            return
+
+        server_a_id = server_conf.get("A_ID")
+        guild_a = self.bot.get_guild(server_a_id)
+        if not guild_a:
+            await ctx.send("Aサーバーが見つかりません。")
+            return
+
+        vc_channels = guild_a.voice_channels
+        for ch in vc_channels:
+            members = [m.display_name for m in ch.members]
+            if members:
+                desc = f"{', '.join(members)}"
+            else:
+                desc = "(誰もいません)"
+
+            embed = discord.Embed(
+                title=f"VC: {ch.name}",
+                description=desc,
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
+
+# -------------------- Cogセットアップ --------------------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
