@@ -1,10 +1,8 @@
 # cogs/voice_chat/vc_cog.py
 from discord.ext import commands
 import discord
-from discord.utils import get
-from config_manager import ConfigManager
 import asyncio
-from datetime import datetime
+from config_manager import ConfigManager
 
 class VcCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
@@ -37,59 +35,58 @@ class VcCog(commands.Cog):
 
         print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
 
-    # ---------- VC参加/退出ログ ----------
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot or not member.guild:
             return
 
-        await self.send_debug(
-            f"VC状態変化: member={member.display_name}, before={getattr(before.channel,'name',None)}, after={getattr(after.channel,'name',None)}"
-        )
+        await self.send_debug(f"VC状態変化受信: member={member.display_name}, "
+                              f"before={getattr(before.channel,'name',None)}, "
+                              f"after={getattr(after.channel,'name',None)}")
 
         server_conf = self.config_manager.get_server_config(member.guild.id)
+        await self.send_debug(f"server_conf: {server_conf}")
+
         if not server_conf:
-            await self.send_debug("サーバー設定が見つかりません")
+            await self.send_debug("このサーバーは転送ペアに登録されていません")
             return
 
         server_a_id = server_conf.get("A_ID")
         vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
+        await self.send_debug(f"A_ID={server_a_id}, VC_LOG_CHANNEL={vc_log_channel_id}")
 
-        # Aサーバー以外は無視
         if member.guild.id != server_a_id:
+            await self.send_debug(f"Aサーバーではないのでログスキップ (guild_id={member.guild.id})")
             return
 
         vc_log_channel = self.bot.get_channel(vc_log_channel_id)
+        await self.send_debug(f"vc_log_channel={vc_log_channel}")
+
         if not vc_log_channel:
-            await self.send_debug(f"VC_LOG_CHANNEL が見つかりません (id={vc_log_channel_id})")
+            await self.send_debug(f"VC_LOG_CHANNEL が取得できません (id={vc_log_channel_id})")
             return
 
-        # ------------------------------------
-        # Embed の生成
-        # ------------------------------------
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        if before.channel is None and after.channel is not None:
-            title = "🔊 VC参加"
-            desc = f"**{member.display_name}** が **{after.channel.name}** に参加しました。"
-            color = discord.Color.green()
-
-        elif before.channel is not None and after.channel is None:
-            title = "🔈 VC退出"
-            desc = f"**{member.display_name}** が **{before.channel.name}** から退出しました。"
-            color = discord.Color.red()
-
-        else:
-            return  # 移動時のログは今回は作らない（必要なら作る）
-
-        embed = discord.Embed(title=title, description=desc, color=color)
-        embed.add_field(name="ユーザー", value=member.display_name, inline=True)
-        embed.add_field(name="時刻", value=now, inline=True)
-        embed.set_thumbnail(url=member.display_avatar.url)
-
         try:
-            await vc_log_channel.send(embed=embed)
-            await self.send_debug(f"VCログ送信完了: {title} ({member.display_name})")
+            if before.channel is None and after.channel is not None:
+                embed = discord.Embed(
+                    title="VC参加",
+                    description=f"{member.display_name} が {after.channel.name} に参加しました。",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"member_id={member.id}")
+                await vc_log_channel.send(embed=embed)
+                await self.send_debug(f"VC参加ログ送信成功: {member.display_name} → {after.channel.name}")
+            elif before.channel is not None and after.channel is None:
+                embed = discord.Embed(
+                    title="VC退出",
+                    description=f"{member.display_name} が {before.channel.name} から退出しました。",
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"member_id={member.id}")
+                await vc_log_channel.send(embed=embed)
+                await self.send_debug(f"VC退出ログ送信成功: {member.display_name} → {before.channel.name}")
+            else:
+                await self.send_debug(f"VC状態変化が上記条件に該当しません (before={before.channel}, after={after.channel})")
         except Exception as e:
             await self.send_debug(f"VCログ送信失敗: {e}")
 
