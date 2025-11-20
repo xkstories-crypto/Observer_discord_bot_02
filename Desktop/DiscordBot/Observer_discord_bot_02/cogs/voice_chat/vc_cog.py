@@ -9,67 +9,95 @@ class VcCog(commands.Cog):
         self.bot = bot
         self.config_manager = config_manager
         try:
-            asyncio.create_task(self.send_debug("[DEBUG] VcCog loaded"))
-        except Exception:
+            asyncio.create_task(self.force_debug("VcCog loaded"))
+        except:
             print("[DEBUG] VcCog loaded")
 
-    # -------------------- DEBUG送信 --------------------
-    async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
-        target_channel = fallback_channel
-        if not target_channel:
-            try:
-                for pair in self.config_manager.config.get("server_pairs", []):
-                    debug_id = pair.get("DEBUG_CHANNEL")
-                    if debug_id:
-                        target_channel = self.bot.get_channel(debug_id)
-                        if target_channel:
-                            break
-            except Exception:
-                target_channel = None
+    # ------------------------------------------------------
+    # DEBUG_CHANNEL に強制送信（失敗しても print）
+    # ------------------------------------------------------
+    async def force_debug(self, message: str):
+        for pair in self.config_manager.config.get("server_pairs", []):
+            debug_id = pair.get("DEBUG_CHANNEL")
+            if not debug_id:
+                continue
 
-        if target_channel:
+            ch = self.bot.get_channel(debug_id)
+            if ch is None:
+                try:
+                    ch = await self.bot.fetch_channel(debug_id)
+                    await ch.send(f"[DEBUG] {message}")
+                    return
+                except Exception as e:
+                    print(f"[DEBUG強制送信失敗: fetch_channel] {e}")
+                    continue
+
             try:
-                await target_channel.send(f"[DEBUG] {message}")
+                await ch.send(f"[DEBUG] {message}")
                 return
             except Exception as e:
-                print(f"[DEBUG送信失敗] {message} ({e})")
+                print(f"[DEBUG強制送信失敗: send] {e}")
+                continue
 
-        print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
+        print(f"[DEBUG未送信] {message}")
 
-    # -------------------- VC参加/退出ログ --------------------
+    # ------------------------------------------------------
+    # VC状態変化を全ログする
+    # ------------------------------------------------------
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        if member.bot or not member.guild:
+        if member.bot:
             return
 
-        # 受信確認用DEBUG
-        await self.send_debug(
-            f"VC状態変化受信: member={member.display_name}, before={getattr(before.channel,'name',None)}, after={getattr(after.channel,'name',None)}"
+        # ① まず受信確認
+        await self.force_debug(
+            f"VC STATE UPDATE: member={member} "
+            f"before={getattr(before.channel, 'name', None)} "
+            f"after={getattr(after.channel, 'name', None)}"
         )
 
-        server_conf = self.config_manager.get_server_config(member.guild.id)
+        guild_id = member.guild.id
+        server_conf = self.config_manager.get_server_config(guild_id)
+
         if not server_conf:
-            await self.send_debug("このサーバーは転送ペアに登録されていません")
+            await self.force_debug(f"サーバー設定なし guild={guild_id}")
             return
 
         server_a_id = server_conf.get("A_ID")
-        vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
+        vc_log_id = server_conf.get("VC_LOG_CHANNEL")
 
-        if member.guild.id != server_a_id:
-            await self.send_debug(f"このサーバーはAサーバーではありません (guild_id={member.guild.id})")
+        # ② Aサーバー以外は無視
+        if guild_id != server_a_id:
+            await self.force_debug(f"Aサーバーではない guild={guild_id}")
             return
 
-        vc_log_channel = self.bot.get_channel(vc_log_channel_id)
-        if not vc_log_channel:
+        # ③ VCログチャンネル取得（get_channel → fetch_channel）
+        vc_log_channel = None
+
+        # --- get_channel 試行 ---
+        vc_log_channel = self.bot.get_channel(vc_log_id)
+        await self.force_debug(
+            f"get_channel({vc_log_id}) → {vc_log_channel}"
+        )
+
+        # --- fetch_channel fallback ---
+        if vc_log_channel is None:
             try:
-                vc_log_channel = await self.bot.fetch_channel(vc_log_channel_id)
+                vc_log_channel = await self.bot.fetch_channel(vc_log_id)
+                await self.force_debug(
+                    f"fetch_channel({vc_log_id}) 成功 → {vc_log_channel}"
+                )
             except Exception as e:
-                await self.send_debug(f"VC_LOG_CHANNEL取得失敗: {e}")
+                await self.force_debug(
+                    f"fetch_channel({vc_log_id}) 失敗: {type(e).__name__}: {e}"
+                )
                 return
 
+        # ④ VC参加 / VC退出の条件判定
         try:
+            # 参加
             if before.channel is None and after.channel is not None:
-                # VC参加
+                await self.force_debug("判定: VC参加ログを送信します")
                 embed = discord.Embed(
                     title="VC参加",
                     description=f"🔊 **{member.display_name}** が **{after.channel.name}** に参加しました。",
@@ -77,9 +105,11 @@ class VcCog(commands.Cog):
                 )
                 embed.set_footer(text=f"member id: {member.id}")
                 await vc_log_channel.send(embed=embed)
+                await self.force_debug("VC参加ログ送信完了")
 
+            # 退出
             elif before.channel is not None and after.channel is None:
-                # VC退出
+                await self.force_debug("判定: VC退出ログを送信します")
                 embed = discord.Embed(
                     title="VC退出",
                     description=f"🔈 **{member.display_name}** が **{before.channel.name}** から退出しました。",
@@ -87,33 +117,36 @@ class VcCog(commands.Cog):
                 )
                 embed.set_footer(text=f"member id: {member.id}")
                 await vc_log_channel.send(embed=embed)
+                await self.force_debug("VC退出ログ送信完了")
+
+            else:
+                await self.force_debug(
+                    f"参加/退出に該当しないイベント: before={before.channel}, after={after.channel}"
+                )
 
         except Exception as e:
-            await self.send_debug(f"VCログ送信失敗: {e}")
+            await self.force_debug(f"VCログ送信失敗: {type(e).__name__}: {e}")
 
-    # -------------------- BサーバーからAサーバーのVC一覧 --------------------
+    # ------------------------------------------------------
+    # Aサーバーの VC 一覧を返すコマンド
+    # ------------------------------------------------------
     @commands.command(name="debug_vc_full")
     async def debug_vc_full(self, ctx: commands.Context):
-        await self.send_debug(f"!debug_vc_full コマンド実行 by {ctx.author.display_name}", fallback_channel=ctx.channel)
+        await self.force_debug(f"!debug_vc_full 実行 by {ctx.author}")
 
         server_conf = self.config_manager.get_server_config(ctx.guild.id)
         if not server_conf:
-            await ctx.send("サーバー設定が見つかりません。")
-            return
+            return await ctx.send("サーバー設定が見つかりません")
 
         server_a_id = server_conf.get("A_ID")
         guild_a = self.bot.get_guild(server_a_id)
-        if not guild_a:
-            await ctx.send("Aサーバーが見つかりません。")
-            return
 
-        vc_channels = guild_a.voice_channels
-        for ch in vc_channels:
+        if not guild_a:
+            return await ctx.send("Aサーバーが取得できません")
+
+        for ch in guild_a.voice_channels:
             members = [m.display_name for m in ch.members]
-            if members:
-                desc = f"{', '.join(members)}"
-            else:
-                desc = "(誰もいません)"
+            desc = ", ".join(members) if members else "(誰もいません)"
 
             embed = discord.Embed(
                 title=f"VC: {ch.name}",
@@ -122,7 +155,9 @@ class VcCog(commands.Cog):
             )
             await ctx.send(embed=embed)
 
-# -------------------- Cogセットアップ --------------------
+# ------------------------------------------------------
+# Cog セットアップ
+# ------------------------------------------------------
 async def setup(bot: commands.Bot):
     config_manager = getattr(bot, "config_manager", None)
     if not config_manager:
