@@ -19,7 +19,6 @@ class VcCog(commands.Cog):
     async def send_debug(self, message: str = None, fallback_channel: discord.TextChannel = None):
         target_channel = fallback_channel
         if not target_channel:
-            # JSON設定からDEBUG_CHANNELを取得
             for pair in self.config_manager.config.get("server_pairs", []):
                 debug_id = pair.get("DEBUG_CHANNEL")
                 if debug_id:
@@ -39,7 +38,6 @@ class VcCog(commands.Cog):
     async def send_vc_log(self, embed: discord.Embed, fallback_channel: discord.TextChannel = None):
         target_channel = fallback_channel
         if not target_channel:
-            # JSON設定からVC_LOG_CHANNELを取得
             for pair in self.config_manager.config.get("server_pairs", []):
                 vc_log_id = pair.get("VC_LOG_CHANNEL")
                 if vc_log_id:
@@ -70,29 +68,39 @@ class VcCog(commands.Cog):
 
         # ---------------- VC_LOG_CHANNEL に Embed送信 ----------------
         embed = None
-        channel_name = getattr(after.channel if after.channel else before.channel, "name", None)
-        if before.channel is None and after.channel is not None:
-            # VC参加
-            embed = discord.Embed(
-                title="通話開始",
-                color=discord.Color.green()
-            )
-            embed.add_field(name="チャンネル", value=channel_name, inline=True)
-            embed.add_field(name="始めた人", value=member.display_name, inline=True)
-            embed.add_field(name="開始時間", value=str(after.channel.created_at), inline=True)
-        elif before.channel is not None and after.channel is None:
-            # VC退出
-            embed = discord.Embed(
-                title="通話終了",
-                color=discord.Color.red()
-            )
-            embed.add_field(name="チャンネル", value=channel_name, inline=True)
-            embed.add_field(name="退出した人", value=member.display_name, inline=True)
-            embed.add_field(name="終了時間", value=str(after.channel.created_at), inline=True)
+        if before.channel != after.channel:
+            if before.channel is None and after.channel is not None:
+                # VC参加
+                embed = discord.Embed(
+                    title="通話開始",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="チャンネル", value=after.channel.name, inline=True)
+                embed.add_field(name="始めた人", value=member.display_name, inline=True)
+                embed.add_field(name="開始時間", value=str(after.channel.created_at), inline=True)
+
+            elif before.channel is not None and after.channel is None:
+                # VC退出
+                embed = discord.Embed(
+                    title="通話終了",
+                    color=discord.Color.red()
+                )
+                embed.add_field(name="チャンネル", value=before.channel.name, inline=True)
+                embed.add_field(name="退出した人", value=member.display_name, inline=True)
+                embed.add_field(name="終了時間", value=str(before.channel.created_at), inline=True)
+
+            elif before.channel is not None and after.channel is not None:
+                # VC間移動
+                embed = discord.Embed(
+                    title="VC移動",
+                    color=discord.Color.orange()
+                )
+                embed.add_field(name="移動元", value=before.channel.name, inline=True)
+                embed.add_field(name="移動先", value=after.channel.name, inline=True)
+                embed.add_field(name="メンバー", value=member.display_name, inline=True)
 
         if embed:
             embed.set_footer(text=f"member id: {member.id}")
-            # 本人アイコンを右に表示（サムネイル）
             if member.avatar:
                 embed.set_thumbnail(url=member.avatar.url)
             await self.send_vc_log(embed=embed)
