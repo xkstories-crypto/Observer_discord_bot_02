@@ -19,8 +19,13 @@ class VcCog(commands.Cog):
     async def send_debug(self, message: str = None, fallback_channel: discord.TextChannel = None):
         target_channel = fallback_channel
         if not target_channel:
-            debug_id = self.config_manager.get_debug_channel_id()  # サーバーごとに取得する場合は引数追加
-            target_channel = self.bot.get_channel(debug_id) if debug_id else None
+            # JSON設定からDEBUG_CHANNELを取得
+            for pair in self.config_manager.config.get("server_pairs", []):
+                debug_id = pair.get("DEBUG_CHANNEL")
+                if debug_id:
+                    target_channel = self.bot.get_channel(debug_id)
+                    if target_channel:
+                        break
 
         if target_channel and message:
             try:
@@ -34,8 +39,13 @@ class VcCog(commands.Cog):
     async def send_vc_log(self, embed: discord.Embed, fallback_channel: discord.TextChannel = None):
         target_channel = fallback_channel
         if not target_channel:
-            vc_log_id = self.config_manager.get_vc_log_channel_id()  # サーバーごとに取得する場合は引数追加
-            target_channel = self.bot.get_channel(vc_log_id) if vc_log_id else None
+            # JSON設定からVC_LOG_CHANNELを取得
+            for pair in self.config_manager.config.get("server_pairs", []):
+                vc_log_id = pair.get("VC_LOG_CHANNEL")
+                if vc_log_id:
+                    target_channel = self.bot.get_channel(vc_log_id)
+                    if target_channel:
+                        break
 
         if target_channel:
             try:
@@ -82,8 +92,9 @@ class VcCog(commands.Cog):
 
         if embed:
             embed.set_footer(text=f"member id: {member.id}")
+            # 本人アイコンを右に表示（サムネイル）
             if member.avatar:
-                embed.set_thumbnail(url=member.avatar.url)  # 右側に本人アイコン表示
+                embed.set_thumbnail(url=member.avatar.url)
             await self.send_vc_log(embed=embed)
 
 # ---------------- Cogセットアップ ----------------
