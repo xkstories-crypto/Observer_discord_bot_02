@@ -9,12 +9,16 @@ class VcCog(commands.Cog):
         self.bot = bot
         self.config_manager = config_manager
         try:
-            asyncio.create_task(self.send_debug("[DEBUG] VcCog loaded"))
+            asyncio.create_task(self.send_debug("VcCog loaded"))
         except Exception:
             print("[DEBUG] VcCog loaded")
 
     # -------------------- DEBUG送信 --------------------
     async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
+        # DEBUGタグが二重にならないよう調整
+        if not message.startswith("[DEBUG]"):
+            message = f"[DEBUG] {message}"
+
         target_channel = fallback_channel
         if not target_channel:
             try:
@@ -29,12 +33,12 @@ class VcCog(commands.Cog):
 
         if target_channel:
             try:
-                await target_channel.send(f"[DEBUG] {message}")
+                await target_channel.send(message)
                 return
             except Exception as e:
                 print(f"[DEBUG送信失敗] {message} ({e})")
 
-        print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
+        print(f"{message} (チャンネル未設定または送信失敗)")
 
     # -------------------- VC参加/退出ログ --------------------
     @commands.Cog.listener()
@@ -42,7 +46,6 @@ class VcCog(commands.Cog):
         if member.bot or not member.guild:
             return
 
-        # 受信ログを DEBUG_CHANNEL に
         await self.send_debug(
             f"VC状態変化受信: member={member.display_name}, "
             f"before={getattr(before.channel,'name',None)}, "
@@ -61,7 +64,6 @@ class VcCog(commands.Cog):
             await self.send_debug(f"このサーバーはAサーバーではありません (guild_id={member.guild.id})")
             return
 
-        # VC_LOG_CHANNEL取得
         vc_log_channel = self.bot.get_channel(vc_log_channel_id)
         if not vc_log_channel:
             try:
@@ -70,65 +72,25 @@ class VcCog(commands.Cog):
                 await self.send_debug(f"VC_LOG_CHANNEL取得失敗: {e}")
                 vc_log_channel = None
 
-        # 参加/退出 Embed 作成
-        embed = None
+        # 参加/退出テキストログ
         try:
             if before.channel is None and after.channel is not None:
-                embed = discord.Embed(
-                    title="VC参加",
-                    description=f"🔊 **{member.display_name}** が **{after.channel.name}** に参加しました。",
-                    color=discord.Color.green()
-                )
+                msg = f"🔊 **{member.display_name}** が **{after.channel.name}** に参加しました。"
             elif before.channel is not None and after.channel is None:
-                embed = discord.Embed(
-                    title="VC退出",
-                    description=f"🔈 **{member.display_name}** が **{before.channel.name}** から退出しました。",
-                    color=discord.Color.red()
-                )
+                msg = f"🔈 **{member.display_name}** が **{before.channel.name}** から退出しました。"
+            else:
+                return
 
-            if embed:
-                embed.set_footer(text=f"member id: {member.id}")
-                if vc_log_channel:
-                    try:
-                        await vc_log_channel.send(embed=embed)
-                    except Exception as e:
-                        # 送信失敗時は必ず DEBUG_CHANNEL に
-                        await self.send_debug(f"VCログ送信失敗: {e}")
-                else:
-                    await self.send_debug("VC_LOG_CHANNELが取得できません。")
+            if vc_log_channel:
+                try:
+                    await vc_log_channel.send(msg)
+                except Exception as e:
+                    await self.send_debug(f"VCログ送信失敗: {e}")
+            else:
+                await self.send_debug("VC_LOG_CHANNELが取得できません。")
 
         except Exception as e:
-            await self.send_debug(f"VC Embed生成失敗: {e}")
-
-    # -------------------- BサーバーからAサーバーのVC一覧 --------------------
-    @commands.command(name="debug_vc_full")
-    async def debug_vc_full(self, ctx: commands.Context):
-        await self.send_debug(f"!debug_vc_full コマンド実行 by {ctx.author.display_name}", fallback_channel=ctx.channel)
-
-        server_conf = self.config_manager.get_server_config(ctx.guild.id)
-        if not server_conf:
-            await ctx.send("サーバー設定が見つかりません。")
-            return
-
-        server_a_id = server_conf.get("A_ID")
-        guild_a = self.bot.get_guild(server_a_id)
-        if not guild_a:
-            await ctx.send("Aサーバーが見つかりません。")
-            return
-
-        vc_channels = guild_a.voice_channels
-        for ch in vc_channels:
-            members = [m.display_name for m in ch.members]
-            desc = ", ".join(members) if members else "(誰もいません)"
-            embed = discord.Embed(
-                title=f"VC: {ch.name}",
-                description=desc,
-                color=discord.Color.blue()
-            )
-            try:
-                await ctx.send(embed=embed)
-            except Exception as e:
-                await self.send_debug(f"VC一覧送信失敗: {e}", fallback_channel=ctx.channel)
+            await self.send_debug(f"VCログ生成失敗: {e}")
 
 # -------------------- Cogセットアップ --------------------
 async def setup(bot: commands.Bot):
