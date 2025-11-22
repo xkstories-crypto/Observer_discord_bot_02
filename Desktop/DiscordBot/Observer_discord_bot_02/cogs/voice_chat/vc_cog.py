@@ -9,22 +9,22 @@ class VcCog(commands.Cog):
         self.bot = bot
         self.config_manager = config_manager
         try:
-            asyncio.create_task(self.send_debug("[DEBUG] VcCog loaded"))
+            asyncio.create_task(self.send_vc_log("[DEBUG] VcCog loaded"))
         except Exception:
             print("[DEBUG] VcCog loaded")
 
-    # -------------------- DEBUG送信 (Embed対応) --------------------
-    async def send_debug(self, message: str = None, embed: discord.Embed = None, fallback_channel: discord.TextChannel = None):
+    # -------------------- VC_LOG送信 (Embed対応) --------------------
+    async def send_vc_log(self, message: str = None, embed: discord.Embed = None, fallback_channel: discord.TextChannel = None):
         """
-        message または embed を DEBUG_CHANNEL に送信
+        message または embed を VC_LOG_CHANNEL に送信
         """
         target_channel = fallback_channel
         if not target_channel:
             try:
                 for pair in self.config_manager.config.get("server_pairs", []):
-                    debug_id = pair.get("DEBUG_CHANNEL")
-                    if debug_id:
-                        target_channel = self.bot.get_channel(debug_id)
+                    vc_log_id = pair.get("VC_LOG_CHANNEL")
+                    if vc_log_id:
+                        target_channel = self.bot.get_channel(vc_log_id)
                         if target_channel:
                             break
             except Exception:
@@ -35,12 +35,12 @@ class VcCog(commands.Cog):
                 if embed:
                     await target_channel.send(embed=embed)
                 elif message:
-                    await target_channel.send(f"[DEBUG] {message}")
+                    await target_channel.send(f"[VC_LOG] {message}")
                 return
             except Exception as e:
-                print(f"[DEBUG送信失敗] {message or 'embed'} ({e})")
+                print(f"[VC_LOG送信失敗] {message or 'embed'} ({e})")
 
-        print(f"[DEBUG] {message or 'embed'} (チャンネル未設定または送信失敗)")
+        print(f"[VC_LOG] {message or 'embed'} (チャンネル未設定または送信失敗)")
 
     # -------------------- VC参加/退出ログ --------------------
     @commands.Cog.listener()
@@ -48,8 +48,8 @@ class VcCog(commands.Cog):
         if member.bot or not member.guild:
             return
 
-        # 受信確認用 DEBUG
-        await self.send_debug(
+        # 受信確認用 VC_LOG
+        await self.send_vc_log(
             message=f"VC状態変化受信: member={member.display_name}, "
                     f"before={getattr(before.channel,'name',None)}, "
                     f"after={getattr(after.channel,'name',None)}"
@@ -74,16 +74,16 @@ class VcCog(commands.Cog):
 
             if embed:
                 embed.set_footer(text=f"member id: {member.id}")
-                # DEBUG_CHANNEL に送信
-                await self.send_debug(embed=embed)
+                # VC_LOG_CHANNEL に送信
+                await self.send_vc_log(embed=embed)
 
         except Exception as e:
-            await self.send_debug(f"VCログ Embed生成失敗: {e}")
+            await self.send_vc_log(f"VCログ Embed生成失敗: {e}")
 
     # -------------------- BサーバーからAサーバーのVC一覧 --------------------
     @commands.command(name="debug_vc_full")
     async def debug_vc_full(self, ctx: commands.Context):
-        await self.send_debug(f"!debug_vc_full コマンド実行 by {ctx.author.display_name}", fallback_channel=ctx.channel)
+        await self.send_vc_log(f"!debug_vc_full コマンド実行 by {ctx.author.display_name}", fallback_channel=ctx.channel)
 
         server_conf = self.config_manager.get_server_config(ctx.guild.id)
         if not server_conf:
@@ -108,7 +108,7 @@ class VcCog(commands.Cog):
             try:
                 await ctx.send(embed=embed)
             except Exception as e:
-                await self.send_debug(f"VC一覧送信失敗: {e}", fallback_channel=ctx.channel)
+                await self.send_vc_log(f"VC一覧送信失敗: {e}", fallback_channel=ctx.channel)
 
 # -------------------- Cogセットアップ --------------------
 async def setup(bot: commands.Bot):
