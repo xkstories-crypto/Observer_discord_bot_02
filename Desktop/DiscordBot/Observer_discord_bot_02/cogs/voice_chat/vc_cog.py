@@ -15,6 +15,9 @@ class VcCog(commands.Cog):
 
     # -------------------- DEBUG送信 --------------------
     async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
+        """
+        デバッグ送信。送信失敗しても print で表示。
+        """
         target_channel = fallback_channel
         if not target_channel:
             try:
@@ -42,43 +45,43 @@ class VcCog(commands.Cog):
         if member.bot or not member.guild:
             return
 
-        # 受信ログを DEBUG_CHANNEL に
+        # ① 受信確認
         await self.send_debug(
             f"VC状態変化受信: member={member.display_name}, "
-            f"before={getattr(before.channel,'name',None)}, "
-            f"after={getattr(after.channel,'name',None)}"
+            f"before={getattr(before.channel,'name',None)}, after={getattr(after.channel,'name',None)}"
         )
 
+        # ② サーバー設定取得
         server_conf = self.config_manager.get_server_config(member.guild.id)
         if not server_conf:
             await self.send_debug("このサーバーは転送ペアに登録されていません")
             return
+        await self.send_debug("サーバー設定取得成功")
 
         server_a_id = server_conf.get("A_ID")
         vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
 
+        # ③ Aサーバー確認
         if member.guild.id != server_a_id:
             await self.send_debug(f"このサーバーはAサーバーではありません (guild_id={member.guild.id})")
             return
+        await self.send_debug("Aサーバー確認成功")
 
-        # -------------------- VC_LOG_CHANNEL取得 --------------------
+        # ④ VC_LOG_CHANNEL取得
         vc_log_channel = self.bot.get_channel(vc_log_channel_id)
         if vc_log_channel:
             await self.send_debug(f"VC_LOG_CHANNEL取得成功: {vc_log_channel.name} ({vc_log_channel.id})")
         else:
             try:
                 vc_log_channel = await self.bot.fetch_channel(vc_log_channel_id)
-                if vc_log_channel:
-                    await self.send_debug(f"VC_LOG_CHANNEL取得成功（fetch）: {vc_log_channel.name} ({vc_log_channel.id})")
-                else:
-                    await self.send_debug("VC_LOG_CHANNEL取得失敗: None")
+                await self.send_debug(f"VC_LOG_CHANNEL fetch 成功: {vc_log_channel.name} ({vc_log_channel.id})")
             except Exception as e:
                 await self.send_debug(f"VC_LOG_CHANNEL取得失敗: {e}")
                 vc_log_channel = None
 
-        # -------------------- VC参加/退出 Embed作成 --------------------
-        embed = None
+        # ⑤ VC参加／退出 Embed 作成と送信
         try:
+            embed = None
             if before.channel is None and after.channel is not None:
                 # VC参加
                 embed = discord.Embed(
@@ -99,9 +102,8 @@ class VcCog(commands.Cog):
                 if vc_log_channel:
                     try:
                         await vc_log_channel.send(embed=embed)
-                        await self.send_debug(f"VCログ送信成功: {member.display_name}")
+                        await self.send_debug("VCログ送信成功")
                     except Exception as e:
-                        # 送信失敗時は必ず DEBUG_CHANNEL に
                         await self.send_debug(f"VCログ送信失敗: {e}")
                 else:
                     await self.send_debug("VC_LOG_CHANNELが取得できません。")
@@ -135,7 +137,6 @@ class VcCog(commands.Cog):
             )
             try:
                 await ctx.send(embed=embed)
-                await self.send_debug(f"VC一覧送信成功: {ch.name}")
             except Exception as e:
                 await self.send_debug(f"VC一覧送信失敗: {e}", fallback_channel=ctx.channel)
 
