@@ -13,10 +13,10 @@ class VcCog(commands.Cog):
         except Exception:
             print("[DEBUG] VcCog loaded")
 
-    # -------------------- DEBUG送信 --------------------
-    async def send_debug(self, message: str, fallback_channel: discord.TextChannel = None):
+    # -------------------- DEBUG送信 (Embed対応) --------------------
+    async def send_debug(self, message: str = None, embed: discord.Embed = None, fallback_channel: discord.TextChannel = None):
         """
-        デバッグ送信。送信失敗しても print で表示。
+        message または embed を DEBUG_CHANNEL に送信
         """
         target_channel = fallback_channel
         if not target_channel:
@@ -32,12 +32,15 @@ class VcCog(commands.Cog):
 
         if target_channel:
             try:
-                await target_channel.send(f"[DEBUG] {message}")
+                if embed:
+                    await target_channel.send(embed=embed)
+                elif message:
+                    await target_channel.send(f"[DEBUG] {message}")
                 return
             except Exception as e:
-                print(f"[DEBUG送信失敗] {message} ({e})")
+                print(f"[DEBUG送信失敗] {message or 'embed'} ({e})")
 
-        print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
+        print(f"[DEBUG] {message or 'embed'} (チャンネル未設定または送信失敗)")
 
     # -------------------- VC参加/退出ログ --------------------
     @commands.Cog.listener()
@@ -45,41 +48,13 @@ class VcCog(commands.Cog):
         if member.bot or not member.guild:
             return
 
-        # ① 受信確認
+        # 受信確認用 DEBUG
         await self.send_debug(
-            f"VC状態変化受信: member={member.display_name}, "
-            f"before={getattr(before.channel,'name',None)}, after={getattr(after.channel,'name',None)}"
+            message=f"VC状態変化受信: member={member.display_name}, "
+                    f"before={getattr(before.channel,'name',None)}, "
+                    f"after={getattr(after.channel,'name',None)}"
         )
 
-        # ② サーバー設定取得
-        server_conf = self.config_manager.get_server_config(member.guild.id)
-        if not server_conf:
-            await self.send_debug("このサーバーは転送ペアに登録されていません")
-            return
-        await self.send_debug("サーバー設定取得成功")
-
-        server_a_id = server_conf.get("A_ID")
-        vc_log_channel_id = server_conf.get("VC_LOG_CHANNEL")
-
-        # ③ Aサーバー確認
-        if member.guild.id != server_a_id:
-            await self.send_debug(f"このサーバーはAサーバーではありません (guild_id={member.guild.id})")
-            return
-        await self.send_debug("Aサーバー確認成功")
-
-        # ④ VC_LOG_CHANNEL取得
-        vc_log_channel = self.bot.get_channel(vc_log_channel_id)
-        if vc_log_channel:
-            await self.send_debug(f"VC_LOG_CHANNEL取得成功: {vc_log_channel.name} ({vc_log_channel.id})")
-        else:
-            try:
-                vc_log_channel = await self.bot.fetch_channel(vc_log_channel_id)
-                await self.send_debug(f"VC_LOG_CHANNEL fetch 成功: {vc_log_channel.name} ({vc_log_channel.id})")
-            except Exception as e:
-                await self.send_debug(f"VC_LOG_CHANNEL取得失敗: {e}")
-                vc_log_channel = None
-
-        # ⑤ VC参加／退出 Embed 作成と送信
         try:
             embed = None
             if before.channel is None and after.channel is not None:
@@ -99,16 +74,11 @@ class VcCog(commands.Cog):
 
             if embed:
                 embed.set_footer(text=f"member id: {member.id}")
-                if vc_log_channel:
-                    try:
-                        await vc_log_channel.send(embed=embed)
-                        await self.send_debug("VCログ送信成功")
-                    except Exception as e:
-                        await self.send_debug(f"VCログ送信失敗: {e}")
-                else:
-                    await self.send_debug("VC_LOG_CHANNELが取得できません。")
+                # DEBUG_CHANNEL に送信
+                await self.send_debug(embed=embed)
+
         except Exception as e:
-            await self.send_debug(f"VC Embed生成失敗: {e}")
+            await self.send_debug(f"VCログ Embed生成失敗: {e}")
 
     # -------------------- BサーバーからAサーバーのVC一覧 --------------------
     @commands.command(name="debug_vc_full")
