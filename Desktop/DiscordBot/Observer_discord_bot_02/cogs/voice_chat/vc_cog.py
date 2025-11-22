@@ -15,7 +15,6 @@ class VcCog(commands.Cog):
 
     # -------------------- DEBUG送信（テキスト用） --------------------
     async def send_debug(self, message: str = None, fallback_channel: discord.TextChannel = None):
-        """簡易テキストログを DEBUG_CHANNEL に送信"""
         target_channel = fallback_channel
         if not target_channel:
             for pair in self.config_manager.config.get("server_pairs", []):
@@ -32,12 +31,10 @@ class VcCog(commands.Cog):
                 return
             except Exception as e:
                 print(f"[DEBUG送信失敗] {message} ({e})")
-
         print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
 
     # -------------------- VC_LOG送信（Embed用） --------------------
-    async def send_vc_log(self, embed: discord.Embed, file: discord.File = None, fallback_channel: discord.TextChannel = None):
-        """Embedを VC_LOG_CHANNEL に送信"""
+    async def send_vc_log(self, embed: discord.Embed, fallback_channel: discord.TextChannel = None):
         target_channel = fallback_channel
         if not target_channel:
             for pair in self.config_manager.config.get("server_pairs", []):
@@ -49,14 +46,10 @@ class VcCog(commands.Cog):
 
         if target_channel:
             try:
-                if file:
-                    await target_channel.send(embed=embed, file=file)
-                else:
-                    await target_channel.send(embed=embed)
+                await target_channel.send(embed=embed)
                 return
             except Exception as e:
                 print(f"[VC_LOG送信失敗] embed ({e})")
-
         print(f"[VC_LOG] embed (チャンネル未設定または送信失敗)")
 
     # -------------------- VC参加/退出ログ --------------------
@@ -74,8 +67,6 @@ class VcCog(commands.Cog):
 
         try:
             embed = None
-            file = None
-            thumbnail_path = "通話アイコン.png"  # 任意のアイコン画像パス
 
             if before.channel is None and after.channel is not None:
                 # VC参加
@@ -98,12 +89,10 @@ class VcCog(commands.Cog):
 
             if embed:
                 embed.set_footer(text=f"member id: {member.id}")
-                # アイコン添付
-                try:
-                    file = discord.File(thumbnail_path, filename="通話アイコン.png")
-                    embed.set_thumbnail(url="attachment://通話アイコン.png")
-                except Exception as e:
-                    await self.send_debug(f"サムネイル添付失敗: {e}")
-                await self.send_vc_log(embed=embed, file=file)
+                # 本人のアバターをサムネイルに
+                if member.avatar:
+                    embed.set_thumbnail(url=member.avatar.url)
+                await self.send_vc_log(embed=embed)
+
         except Exception as e:
             await self.send_debug(f"VCログ Embed生成失敗: {e}")
