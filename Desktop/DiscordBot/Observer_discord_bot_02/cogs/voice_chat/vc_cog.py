@@ -3,6 +3,7 @@ from discord.ext import commands
 import discord
 import asyncio
 from config_manager import ConfigManager
+from datetime import datetime
 
 class VcCog(commands.Cog):
     def __init__(self, bot: commands.Bot, config_manager: ConfigManager):
@@ -104,6 +105,38 @@ class VcCog(commands.Cog):
             if member.avatar:
                 embed.set_thumbnail(url=member.avatar.url)
             await self.send_vc_log(embed=embed)
+
+    # ---------------- 現在のVC状況をEmbed表示 ----------------
+    @commands.command(name="vc_here")
+    async def vc_here(self, ctx: commands.Context):
+        voice_state = ctx.author.voice
+
+        if not voice_state or not voice_state.channel:
+            await ctx.send("あなたは現在どのVCにも参加していません。")
+            return
+
+        vc = voice_state.channel
+        members = vc.members
+        member_count = len(members)
+
+        # Embed作成
+        embed = discord.Embed(
+            title=f"{vc.name}（{member_count}人）",
+            description="現在の通話参加者一覧",
+            timestamp=datetime.utcnow(),
+            color=discord.Color.blue()
+        )
+
+        # メンバー一覧フィールド
+        for m in members:
+            embed.add_field(name=m.display_name, value=f"ID: {m.id}", inline=False)
+
+        # 全員のアイコンは制約上最初のメンバーのみ大きく表示
+        if members and members[0].avatar:
+            embed.set_image(url=members[0].avatar.url)
+
+        # コマンド実行チャンネルへ送信
+        await ctx.send(embed=embed)
 
 # ---------------- Cogセットアップ ----------------
 async def setup(bot: commands.Bot):
