@@ -1,7 +1,6 @@
 # cogs/voice_chat/vc_cog.py
 from discord.ext import commands
 import discord
-import asyncio
 from config_manager import ConfigManager
 from datetime import datetime
 
@@ -102,13 +101,13 @@ class VcCog(commands.Cog):
     # ---------------- VC状況確認コマンド ----------------
     @commands.command(name="vc_here")
     async def vc_here(self, ctx: commands.Context):
-        """Aサーバー禁止通知とBサーバーからAサーバーVC確認を統合"""
+        """Aサーバー禁止通知とBサーバーでAサーバーVC確認"""
 
         server_pairs = self.config_manager.config.get("server_pairs", [])
 
-        # 実行サーバーが禁止サーバー（Aサーバー）かチェック
+        # 実行サーバーがAサーバー（禁止サーバー）か確認
         for pair in server_pairs:
-            a_server_id = pair.get("A_SERVER_ID")
+            a_server_id = pair.get("A_ID")
             debug_channel_id = pair.get("DEBUG_CHANNEL")
             if ctx.guild.id == a_server_id:
                 message = f"{ctx.author.display_name} が {ctx.guild.name} で !vc_here を使用しました（禁止）。"
@@ -118,15 +117,15 @@ class VcCog(commands.Cog):
                 await ctx.send("このサーバーでは使用できません。")
                 return
 
-        # BサーバーでAサーバー全VC状況取得
+        # BサーバーでAサーバー全VC情報取得
         for pair in server_pairs:
-            server_id = pair.get("A_SERVER_ID")
+            a_server_id = pair.get("A_ID")
             debug_channel_id = pair.get("DEBUG_CHANNEL")
-            server = self.bot.get_guild(server_id)
+            server = self.bot.get_guild(a_server_id)
             target_channel = self.bot.get_channel(debug_channel_id)
 
             if not server:
-                await self.send_debug(f"Aサーバー取得失敗: server_id={server_id}")
+                await self.send_debug(f"Aサーバー取得失敗: server_id={a_server_id}")
                 continue
             if not target_channel:
                 await self.send_debug(f"DEBUGチャンネル取得失敗: channel_id={debug_channel_id}")
