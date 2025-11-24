@@ -102,30 +102,43 @@ class VcCog(commands.Cog):
     # ---------------- VC状況確認コマンド ----------------
     @commands.command(name="vc_here")
     async def vc_here(self, ctx: commands.Context):
-        forbidden_server_ids = [pair.get("A_SERVER_ID") for pair in self.config_manager.config.get("server_pairs", [])]
+        """Aサーバー禁止通知とBサーバーからAサーバーVC確認を統合"""
 
-        # Aサーバーで使われた場合は禁止
-        if ctx.guild.id in forbidden_server_ids:
-            message = f"{ctx.author.display_name} が {ctx.guild.name} で !vc_here を使用しました（禁止）。"
-            await self.send_debug(message, mention_everyone=True)
-            await ctx.send("このサーバーでは使用できません。")
-            return
+        server_pairs = self.config_manager.config.get("server_pairs", [])
 
-        # Bサーバーでの通常処理：Aサーバー全VC状況取得
-        for pair in self.config_manager.config.get("server_pairs", []):
+        # 実行サーバーが禁止サーバー（Aサーバー）かチェック
+        for pair in server_pairs:
+            a_server_id = pair.get("A_SERVER_ID")
+            debug_channel_id = pair.get("DEBUG_CHANNEL")
+            if ctx.guild.id == a_server_id:
+                message = f"{ctx.author.display_name} が {ctx.guild.name} で !vc_here を使用しました（禁止）。"
+                debug_channel = self.bot.get_channel(debug_channel_id)
+                if debug_channel:
+                    await self.send_debug(message, fallback_channel=debug_channel, mention_everyone=True)
+                await ctx.send("このサーバーでは使用できません。")
+                return
+
+        # BサーバーでAサーバー全VC状況取得
+        for pair in server_pairs:
             server_id = pair.get("A_SERVER_ID")
+            debug_channel_id = pair.get("DEBUG_CHANNEL")
             server = self.bot.get_guild(server_id)
+            target_channel = self.bot.get_channel(debug_channel_id)
+
             if not server:
+                await self.send_debug(f"Aサーバー取得失敗: server_id={server_id}")
+                continue
+            if not target_channel:
+                await self.send_debug(f"DEBUGチャンネル取得失敗: channel_id={debug_channel_id}")
                 continue
 
             for vc in server.voice_channels:
                 members = vc.members
-                member_count = len(members)
-                if member_count == 0:
+                if len(members) == 0:
                     continue
 
                 embed = discord.Embed(
-                    title=f"{vc.name}（{member_count}人）",
+                    title=f"{vc.name}（{len(members)}人）",
                     description="現在の通話参加者一覧",
                     timestamp=datetime.utcnow(),
                     color=discord.Color.blue()
@@ -135,10 +148,10 @@ class VcCog(commands.Cog):
                 if members and members[0].avatar:
                     embed.set_thumbnail(url=members[0].avatar.url)
 
-                vc_log_id = pair.get("DEBUG_CHANNEL")
-                target_channel = self.bot.get_channel(vc_log_id)
-                if target_channel:
+                try:
                     await target_channel.send(embed=embed)
+                except Exception as e:
+                    await self.send_debug(f"Embed送信失敗: {e}")
 
 # ---------------- Cogセットアップ ----------------
 async def setup(bot: commands.Bot):
