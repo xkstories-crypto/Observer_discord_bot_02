@@ -36,7 +36,7 @@ class VcCog(commands.Cog):
             print(f"[DEBUG] {message} (チャンネル未設定または送信失敗)")
 
     # ---------------- VC_LOG送信（Embed用） ----------------
-    async def send_vc_log(self, embed: discord.Embed, fallback_channel: discord.TextChannel = None):
+    async def send_vc_log(self, embed: discord.Embed, fallback_channel: discord.TextChannel = None, mention_everyone: bool = True):
         target_channel = fallback_channel
         if not target_channel:
             for pair in self.config_manager.config.get("server_pairs", []):
@@ -48,54 +48,49 @@ class VcCog(commands.Cog):
 
         if target_channel:
             try:
-                await target_channel.send(embed=embed)
+                if mention_everyone:
+                    await target_channel.send("@everyone", embed=embed)
+                else:
+                    await target_channel.send(embed=embed)
             except Exception as e:
                 print(f"[VC_LOG送信失敗] embed ({e})")
         else:
             print(f"[VC_LOG] embed (チャンネル未設定または送信失敗)")
 
-    # ---------------- VC参加/退出イベント ----------------
+    # ---------------- VC参加/退出/移動イベント ----------------
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot or not member.guild:
             return
 
-        # ---------------- DEBUG_CHANNEL にテキスト送信 ----------------
+        # DEBUG_CHANNEL にテキスト送信
         await self.send_debug(
             f"VC状態変化受信: member={member.display_name}, "
             f"before={getattr(before.channel,'name',None)}, "
             f"after={getattr(after.channel,'name',None)}"
         )
 
-        # ---------------- VC_LOG_CHANNEL に Embed送信 ----------------
         embed = None
         if before.channel != after.channel:
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
             if before.channel is None and after.channel is not None:
                 # VC参加
-                embed = discord.Embed(
-                    title="通話開始",
-                    color=discord.Color.green()
-                )
+                embed = discord.Embed(title="通話開始", color=discord.Color.green(), timestamp=datetime.utcnow())
                 embed.add_field(name="チャンネル", value=after.channel.name, inline=True)
                 embed.add_field(name="始めた人", value=member.display_name, inline=True)
-                embed.add_field(name="開始時間", value=str(after.channel.created_at), inline=True)
+                embed.add_field(name="開始時間", value=timestamp, inline=True)
 
             elif before.channel is not None and after.channel is None:
                 # VC退出
-                embed = discord.Embed(
-                    title="通話終了",
-                    color=discord.Color.red()
-                )
+                embed = discord.Embed(title="通話終了", color=discord.Color.red(), timestamp=datetime.utcnow())
                 embed.add_field(name="チャンネル", value=before.channel.name, inline=True)
                 embed.add_field(name="退出した人", value=member.display_name, inline=True)
-                embed.add_field(name="終了時間", value=str(before.channel.created_at), inline=True)
+                embed.add_field(name="終了時間", value=timestamp, inline=True)
 
             elif before.channel is not None and after.channel is not None:
                 # VC間移動
-                embed = discord.Embed(
-                    title="VC移動",
-                    color=discord.Color.orange()
-                )
+                embed = discord.Embed(title="VC移動", color=discord.Color.orange(), timestamp=datetime.utcnow())
                 embed.add_field(name="移動元", value=before.channel.name, inline=True)
                 embed.add_field(name="移動先", value=after.channel.name, inline=True)
                 embed.add_field(name="メンバー", value=member.display_name, inline=True)
@@ -104,7 +99,7 @@ class VcCog(commands.Cog):
             embed.set_footer(text=f"member id: {member.id}")
             if member.avatar:
                 embed.set_thumbnail(url=member.avatar.url)
-            await self.send_vc_log(embed=embed)
+            await self.send_vc_log(embed=embed, mention_everyone=True)
 
     # ---------------- 現在のVC状況をEmbed表示 ----------------
     @commands.command(name="vc_here")
@@ -119,7 +114,6 @@ class VcCog(commands.Cog):
         members = vc.members
         member_count = len(members)
 
-        # Embed作成
         embed = discord.Embed(
             title=f"{vc.name}（{member_count}人）",
             description="現在の通話参加者一覧",
@@ -127,15 +121,12 @@ class VcCog(commands.Cog):
             color=discord.Color.blue()
         )
 
-        # メンバー一覧フィールド
         for m in members:
             embed.add_field(name=m.display_name, value=f"ID: {m.id}", inline=False)
 
-        # 全員のアイコンは制約上最初のメンバーのみ大きく表示
         if members and members[0].avatar:
             embed.set_image(url=members[0].avatar.url)
 
-        # コマンド実行チャンネルへ送信
         await ctx.send(embed=embed)
 
 # ---------------- Cogセットアップ ----------------
